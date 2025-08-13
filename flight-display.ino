@@ -43,6 +43,19 @@ struct FlightInfo {
   bool valid = false;
 };
 
+static bool sameFlightDisplay(const FlightInfo &a, const FlightInfo &b) {
+  if (!a.valid && !b.valid) return true;
+  if (a.valid != b.valid) return false;
+  if (a.ident != b.ident) return false;
+  if (a.typeCode != b.typeCode) return false;
+  if (a.altitudeFt != b.altitudeFt) return false;
+  // Consider distances equal within 0.1 km to avoid flicker
+  double da = isnan(a.distanceKm) ? 0 : a.distanceKm;
+  double db = isnan(b.distanceKm) ? 0 : b.distanceKm;
+  if (fabs(da - db) > 0.1) return false;
+  return true;
+}
+
 static void drawCentered(const String &text, int16_t y, uint8_t size = 1) {
   display.setTextSize(size);
   int16_t x1, y1;
@@ -369,6 +382,8 @@ void setup() {
 
 void loop() {
   static uint32_t lastFetch = 0;
+  static bool haveDisplayed = false;
+  static FlightInfo lastShown;
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
@@ -376,13 +391,17 @@ void loop() {
 
   if (millis() - lastFetch >= FETCH_INTERVAL_MS || lastFetch == 0) {
     lastFetch = millis();
-    showSplash("Fetching flights...");
-
     FlightInfo nearest;
     if (fetchNearestFlight(nearest)) {
-      renderFlight(nearest);
+      if (!haveDisplayed || !sameFlightDisplay(nearest, lastShown)) {
+        renderFlight(nearest);
+        lastShown = nearest;
+        haveDisplayed = true;
+      }
     } else {
-      showSplash("No data", "Check Wi-Fi/API");
+      if (!haveDisplayed) {
+        showSplash("No data", "Check Wi-Fi/API");
+      }
     }
   }
 
