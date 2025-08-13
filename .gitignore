@@ -1,0 +1,7 @@
+config.h
+.DS_Store
+/.pio/
+/.vscode/
+*.bak
+*.tmp
+
