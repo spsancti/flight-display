@@ -13,6 +13,7 @@
 #include <Adafruit_SSD1306.h>
 
 #include "config.h"  // Create from config.example.h and do not commit secrets
+#include "aircraft_types.h"
 
 #ifndef SCREEN_WIDTH
 #define SCREEN_WIDTH 128
@@ -31,6 +32,15 @@ static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
 static const uint32_t FETCH_INTERVAL_MS = 30000;        // 30s between API calls
 static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;   // HTTP connect timeout
 static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;      // HTTP read timeout
+// Preallocated HTTP body buffer to reduce heap churn
+static const size_t BODY_BUF_CAP = 65536;  // 64KB cap
+static char* g_bodyBuf = nullptr;
+// Wi‑Fi reconnect state
+static bool wifiConnecting = false;
+static uint32_t wifiLastAttemptMs = 0;
+static uint32_t wifiBackoffMs = 0; // adaptive backoff
+static const uint32_t WIFI_BACKOFF_MIN_MS = 2000;
+static const uint32_t WIFI_BACKOFF_MAX_MS = 60000;
 
 struct FlightInfo {
   String ident;     // flight/callsign or registration/hex fallback
@@ -77,25 +87,23 @@ static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
 }
 
 static void connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  const uint32_t now = millis();
+  // Respect backoff and avoid re-entrant begin() while connecting
+  if (wifiConnecting && (now - wifiLastAttemptMs) < WIFI_CONNECT_TIMEOUT_MS) return;
+  if (wifiBackoffMs > 0 && (now - wifiLastAttemptMs) < wifiBackoffMs) return;
+
   WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
+  // Do not force disconnect if we're mid-connect; just (re)begin
+  Serial.print("[WiFi] Connecting to "); Serial.println(WIFI_SSID);
+  showSplash("Connecting Wi-Fi...", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("[WiFi] Connecting to ");
-  Serial.println(WIFI_SSID);
-  uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - start) < WIFI_CONNECT_TIMEOUT_MS) {
-    showSplash("Connecting Wi-Fi...", WIFI_SSID);
-    delay(500);
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("[WiFi] Connected. IP: ");
-    Serial.println(WiFi.localIP());
-    showSplash("Wi-Fi connected", WiFi.localIP().toString().c_str());
-    delay(500);
-  } else {
-    Serial.println("[WiFi] Connection failed. Check credentials.");
-    showSplash("Wi-Fi failed", "Check credentials");
-    delay(1500);
-  }
+  wifiConnecting = true;
+  wifiLastAttemptMs = now;
+  if (wifiBackoffMs == 0) wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
 }
 
 static double deg2rad(double deg) {
@@ -260,10 +268,9 @@ static bool fetchNearestFlight(FlightInfo &out) {
   DynamicJsonDocument doc(49152); // ~48KB; holds filtered subset
 
   if (contentLength > 0 && contentLength < 200000) {
-    // Read exact bytes into a buffer with a resilient loop
-    std::unique_ptr<char[]> buf(new (std::nothrow) char[contentLength + 1]);
-    if (!buf) {
-      Serial.println("[MEM] Allocation failed for body buffer.");
+    // Read exact bytes into a reusable buffer to avoid heap fragmentation
+    if (!g_bodyBuf || contentLength + 1 > BODY_BUF_CAP) {
+      Serial.println("[MEM] Body buffer not available or too small.");
       http.end();
       return false;
     }
@@ -276,7 +283,7 @@ static bool fetchNearestFlight(FlightInfo &out) {
         size_t chunk = (size_t)avail;
         size_t remain = contentLength - total;
         if (chunk > remain) chunk = remain;
-        int r = s.readBytes(buf.get() + total, chunk);
+        int r = s.readBytes(g_bodyBuf + total, chunk);
         if (r > 0) {
           total += (size_t)r;
           deadline = millis() + HTTP_READ_TIMEOUT_MS; // extend deadline on progress
@@ -289,16 +296,16 @@ static bool fetchNearestFlight(FlightInfo &out) {
         yield();
       }
     }
-    buf[total] = '\0';
+    g_bodyBuf[total] = '\0';
     Serial.print("[HTTP] Read bytes: "); Serial.println(total);
     if (total != contentLength) {
       Serial.println("[HTTP] Warning: body shorter than Content-Length.");
     }
     http.end();
-    DeserializationError err = deserializeJson(doc, buf.get(), total, DeserializationOption::Filter(filter));
+    DeserializationError err = deserializeJson(doc, g_bodyBuf, total, DeserializationOption::Filter(filter));
     if (err) {
       Serial.print("[JSON] Parse error: "); Serial.println(err.c_str());
-      Serial.print("[HTTP] Body preview (512): "); Serial.println(String(buf.get()).substring(0, 512));
+      Serial.print("[HTTP] Body preview (512): "); Serial.println(String(g_bodyBuf).substring(0, 512));
       return false;
     }
   } else {
@@ -330,16 +337,28 @@ static void renderFlight(const FlightInfo &fi) {
 
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.println("Nearest Flight");
+  display.println("Nearest Aircraft");
 
-  display.setTextSize(2);
+  // Friendly aircraft type name on second line
   display.setCursor(0, 12);
-  display.println(fi.ident);
+  String friendly = fi.typeCode.length() ? aircraftFriendlyName(fi.typeCode) : String("");
+  if (!friendly.length() && fi.typeCode.length()) {
+    // fallback to CODE Name
+    friendly = aircraftDisplayType(fi.typeCode);
+  }
+  if (!friendly.length()) friendly = String("Unknown");
+  if (friendly.length() > 21) friendly.remove(21);
+  display.println(friendly);
 
-  display.setTextSize(1);
-  display.setCursor(0, 32);
-  display.print("Type: ");
-  display.println(fi.typeCode.length() ? fi.typeCode : "n/a");
+  // Third line: upper seat limit if known
+  display.setCursor(0, 22);
+  uint16_t minSeats = 0, maxSeats = 0;
+  if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) {
+    display.print("Seats: ");
+    display.println(maxSeats);
+  } else {
+    display.println("Seats: n/a");
+  }
 
   display.setCursor(0, 42);
   display.print("Alt: ");
@@ -367,6 +386,31 @@ void setup() {
   delay(50);
   Serial.println("\n[Boot] Flight Display starting...");
   delay(200);
+  // Allocate reusable body buffer once
+  g_bodyBuf = (char*)malloc(BODY_BUF_CAP);
+  if (g_bodyBuf) {
+    Serial.print("[MEM] Body buffer: "); Serial.print(BODY_BUF_CAP); Serial.println(" bytes");
+  } else {
+    Serial.println("[MEM] Body buffer allocation failed");
+  }
+  // Wi-Fi event logging
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+    switch(event) {
+      case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+        Serial.print("[WiFi] Disconnected. Reason: "); Serial.println(info.wifi_sta_disconnected.reason);
+        wifiConnecting = false;
+        // Exponential backoff on failure
+        if (wifiBackoffMs == 0) wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
+        else wifiBackoffMs = min(WIFI_BACKOFF_MAX_MS, wifiBackoffMs * 2);
+        break;
+      case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+        Serial.print("[WiFi] Got IP: "); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+        wifiConnecting = false;
+        wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
+        break;
+      default: break;
+    }
+  });
   // I2C + Display
   Wire.begin(OLED_SDA, OLED_SCL);
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
