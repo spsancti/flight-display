@@ -22,6 +22,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"A319", "319", "Airbus", "A319", 124, 156},
     {"A320", "320", "Airbus", "A320", 150, 186},
     {"A321", "321", "Airbus", "A321", 185, 236},
+    {"A20N", "32N", "Airbus", "A320neo", 150, 194},
+    {"A21N", "32Q", "Airbus", "A321neo", 185, 244},
     {"A332", "332", "Airbus", "A330-200", 210, 272},
     {"A333", "333", "Airbus", "A330-300", 277, 440},
     {"A343", "343", "Airbus", "A340-300", 295, 335},
@@ -45,6 +47,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"B788", "788", "Boeing", "787-8", 242, 290},
     {"B789", "789", "Boeing", "787-9", 280, 335},
     {"B78X", "78J", "Boeing", "787-10", 318, 440},
+    {"B739", "739", "Boeing", "737-900", 178, 220},
     {"E170", "E70", "Embraer", "E170", 66, 78},
     {"E175", "E75", "Embraer", "E175", 76, 88},
     {"E190", "E90", "Embraer", "E190", 96, 114},
@@ -53,7 +56,55 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"CRJ7", "CR7", "Bombardier", "CRJ-700", 66, 78},
     {"CRJ9", "CR9", "Bombardier", "CRJ-900", 76, 90},
     {"CRJX", "CRK", "Bombardier", "CRJ-1000", 90, 104},
+    // Business jets and GA (private)
+    {"CL30", "",   "Bombardier", "Challenger 300", 8, 9},
+    {"CL35", "",   "Bombardier", "Challenger 350", 8, 10},
+    {"CL60", "",   "Bombardier", "Challenger 600", 10, 12},
+    {"GLEX", "",   "Bombardier", "Global Express", 12, 19},
+    {"GL7T", "",   "Bombardier", "Global 7500", 15, 19},
+    {"GLF2", "",   "Gulfstream",  "Gulfstream II", 10, 14},
+    {"GLF3", "",   "Gulfstream",  "Gulfstream III", 10, 14},
+    {"GLF4", "",   "Gulfstream",  "Gulfstream IV", 12, 16},
+    {"GLF5", "",   "Gulfstream",  "Gulfstream V", 14, 19},
+    {"GLF6", "",   "Gulfstream",  "Gulfstream 650", 14, 19},
+    {"C510", "",   "Cessna",      "Citation Mustang", 4, 5},
+    {"C525", "",   "Cessna",      "CitationJet (CJ)", 5, 8},
+    {"C25A", "",   "Cessna",      "Citation CJ1+", 5, 6},
+    {"C25B", "",   "Cessna",      "Citation CJ3", 6, 8},
+    {"C25C", "",   "Cessna",      "Citation CJ4", 7, 9},
+    {"C680", "",   "Cessna",      "Citation Sovereign", 8, 12},
+    {"C68A", "",   "Cessna",      "Citation Latitude", 8, 9},
+    {"C700", "",   "Cessna",      "Citation Longitude", 8, 12},
+    {"H25B", "",   "Hawker",      "Hawker 800", 8, 9},
+    {"H25C", "",   "Hawker",      "Hawker 1000", 8, 9},
+    {"LJ35", "",   "Learjet",     "Learjet 35", 6, 8},
+    {"LJ40", "",   "Learjet",     "Learjet 40", 6, 7},
+    {"LJ45", "",   "Learjet",     "Learjet 45", 8, 9},
+    {"LJ60", "",   "Learjet",     "Learjet 60", 7, 8},
+    {"LJ75", "",   "Learjet",     "Learjet 75", 8, 9},
+    {"E50P", "",   "Embraer",     "Phenom 100", 4, 6},
+    {"E55P", "",   "Embraer",     "Phenom 300", 6, 9},
+    {"EA50", "",   "Eclipse",     "Eclipse 500", 4, 5},
+    {"P180", "",   "Piaggio",     "P.180 Avanti", 7, 9},
+    {"BE20", "",   "Beechcraft",  "King Air 200", 7, 9},
+    {"BE40", "",   "Beechcraft",  "Beechjet 400", 7, 8},
+    {"PC24", "",   "Pilatus",     "PC-24", 6, 10},
+    {"TBM7", "",   "Daher",        "TBM 700", 5, 6},
+    {"TBM8", "",   "Daher",        "TBM 850", 5, 6},
+    {"TBM9", "",   "Daher",        "TBM 900", 5, 6},
+    {"P46T", "",   "Piper",        "PA-46 Meridian/M600", 5, 6},
+    {"PA46", "",   "Piper",        "PA-46 Malibu/Mirage", 5, 6},
+    {"DA40", "",   "Diamond",      "DA40 Star", 4, 4},
+    {"DA42", "",   "Diamond",      "DA42 Twin Star", 4, 4},
+    {"DA62", "",   "Diamond",      "DA62", 7, 7},
+    {"CL35", "",   "Bombardier", "Challenger 350", 8, 10},
+    {"F2TH", "",   "Dassault",    "Falcon 2000", 10, 12},
+    {"FA50", "",   "Dassault",    "Falcon 50", 8, 9},
+    {"FA7X", "",   "Dassault",    "Falcon 7X", 12, 16},
+    {"FA8X", "",   "Dassault",    "Falcon 8X", 12, 16},
+    {"F900", "",   "Dassault",    "Falcon 900", 12, 19},
     {"AT45", "ATR", "ATR", "ATR 42-500", 42, 50},
+    {"AT72", "AT7", "ATR", "ATR 72", 68, 74},
     {"AT76", "AT7", "ATR", "ATR 72-600", 68, 78},
     {"C172", "", "Cessna", "172 Skyhawk", 4, 4},
     {"C182", "", "Cessna", "182 Skylane", 4, 4},
@@ -66,6 +117,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"SR22", "", "Cirrus", "SR22", 4, 4},
     {"DHC2", "", "de Havilland Canada", "DHC-2 Beaver", 6, 7},
     {"DHC3", "", "de Havilland Canada", "DHC-3 Otter", 10, 14},
+    {"DH3T", "", "de Havilland Canada", "DHC-3T Turbo Otter", 10, 14},
+    {"DHC3T", "", "de Havilland Canada", "DHC-3T Turbo Otter", 10, 14},
     {"DH6T", "", "de Havilland Canada", "DHC-6 Twin Otter", 19, 19},
     {"DHC7", "", "de Havilland Canada", "DHC-7 Dash 7", 40, 50},
     {"PC12", "", "Pilatus", "PC-12", 6, 9},
@@ -186,6 +239,35 @@ inline bool aircraftSeatRange(const String& rawCode, uint16_t& minOut, uint16_t&
       minOut = kTypeInfo[i].minSeats; maxOut = kTypeInfo[i].maxSeats; return true;
     }
   }
+  // Family prefix fallbacks for unknown exact codes
+  if (code.startsWith("A32")) { minOut = 150; maxOut = 244; return true; }
+  if (code.startsWith("A33")) { minOut = 210; maxOut = 440; return true; }
+  if (code.startsWith("A35")) { minOut = 300; maxOut = 410; return true; }
+  if (code.startsWith("A22") || code.startsWith("BCS")) { minOut = 108; maxOut = 160; return true; }
+  if (code.startsWith("B73")) { minOut = 126; maxOut = 220; return true; }
+  if (code.startsWith("B74")) { minOut = 410; maxOut = 524; return true; }
+  if (code.startsWith("B75")) { minOut = 200; maxOut = 280; return true; }
+  if (code.startsWith("B76")) { minOut = 211; maxOut = 375; return true; }
+  if (code.startsWith("B77")) { minOut = 314; maxOut = 451; return true; }
+  if (code.startsWith("B78")) { minOut = 242; maxOut = 440; return true; }
+  if (code.startsWith("E17")) { minOut = 66;  maxOut = 88;  return true; }
+  if (code.startsWith("E19")) { minOut = 96;  maxOut = 124; return true; }
+  if (code.startsWith("CRJ")) { minOut = 50;  maxOut = 104; return true; }
+  if (code.startsWith("DH8")) { minOut = 39;  maxOut = 90;  return true; }
+  if (code.startsWith("AT4")) { minOut = 42;  maxOut = 50;  return true; }
+  if (code.startsWith("AT7")) { minOut = 68;  maxOut = 78;  return true; }
+  if (code.startsWith("GLF") || code.startsWith("GLEX") || code.startsWith("GL7T")) { minOut = 12; maxOut = 19; return true; }
+  if (code.startsWith("CL3") || code.startsWith("CL6")) { minOut = 8; maxOut = 12; return true; }
+  if (code.startsWith("LJ")) { minOut = 6; maxOut = 9; return true; }
+  if (code.startsWith("C25") || code.startsWith("C68") || code.startsWith("C700") || code.startsWith("C56X")) { minOut = 7; maxOut = 12; return true; }
+  if (code.startsWith("C51") || code.startsWith("EA50")) { minOut = 4; maxOut = 5; return true; }
+  if (code.startsWith("BE2") || code.startsWith("BE3") || code.startsWith("BE4")) { minOut = 7; maxOut = 9; return true; }
+  if (code.startsWith("PC12")) { minOut = 6; maxOut = 9; return true; }
+  if (code.startsWith("TBM")) { minOut = 5; maxOut = 6; return true; }
+  if (code.startsWith("PA46") || code.startsWith("P46T") || code.startsWith("PA34") || code.startsWith("PA32") || code.startsWith("PA31")) { minOut = 4; maxOut = 8; return true; }
+  if (code.startsWith("DA4") || code.startsWith("DA6")) { minOut = 4; maxOut = 7; return true; }
+  if (code.startsWith("SR2")) { minOut = 4; maxOut = 4; return true; }
+  if (code.startsWith("PA28")) { minOut = 2; maxOut = 4; return true; }
   return false;
 }
 
