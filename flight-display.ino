@@ -11,6 +11,9 @@
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#if defined(ESP32)
+#include <esp_system.h>
+#endif
 
 #include "config.h"  // Create from config.example.h and do not commit secrets
 #include "aircraft_types.h"
@@ -34,14 +37,34 @@ struct FlightInfo;
 #ifndef RELAY_ACTIVE_HIGH
 #define RELAY_ACTIVE_HIGH 0  // Default to active-LOW modules; set to 1 if active-HIGH
 #endif
+// Blink IN1 during boot? Relays draw significant current; default OFF to avoid brownouts.
+#ifndef RELAY_BLINK_ON_BOOT
+#define RELAY_BLINK_ON_BOOT 0
+#endif
 
-static inline void relayWrite(uint8_t pin, bool on) {
-  digitalWrite(pin, (RELAY_ACTIVE_HIGH ? (on ? HIGH : LOW) : (on ? LOW : HIGH)));
+// Boot staging: allow power to settle before Wi‑Fi/TLS ramps current
+#ifndef BOOT_POWER_SETTLE_MS
+#define BOOT_POWER_SETTLE_MS 1200
+#endif
+
+// Use lower TX power during connection to reduce inrush; bump after got IP
+#ifndef WIFI_BOOT_TXPOWER
+#define WIFI_BOOT_TXPOWER WIFI_POWER_8_5dBm
+#endif
+#ifndef WIFI_RUN_TXPOWER
+#define WIFI_RUN_TXPOWER WIFI_POWER_15dBm
+#endif
+
+static inline void relayWrite(int pin, bool on) {
+  if (pin < 0) return; // allow disabling a channel by setting pin to -1
+  digitalWrite((uint8_t)pin, (RELAY_ACTIVE_HIGH ? (on ? HIGH : LOW) : (on ? LOW : HIGH)));
 }
 
 static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool blinkPhase) {
   if (!haveDisplayed) {
-    relayWrite(RELAY_IN1_PIN, blinkPhase); // blink status
+    // Keep all relays OFF during boot to avoid brownouts from coil inrush.
+    // Optionally blink IN1 if explicitly enabled.
+    relayWrite(RELAY_IN1_PIN, (RELAY_BLINK_ON_BOOT ? blinkPhase : false));
     relayWrite(RELAY_IN2_PIN, false);
     relayWrite(RELAY_IN3_PIN, false);
     relayWrite(RELAY_IN4_PIN, false);
@@ -266,84 +289,64 @@ static double haversineKm(double lat1, double lon1, double lat2, double lon2) {
   return R * c;
 }
 
+// Maximum acceptable age for a position (seconds). Align with tar1090 defaults (~15s),
+// but allow up to 45s to be tolerant of intermittent updates on ESP32.
+#ifndef POSITION_MAX_AGE_S
+#define POSITION_MAX_AGE_S 45
+#endif
+
 static bool extractLatLon(JsonObject obj, double &outLat, double &outLon) {
-  bool haveDirect = obj.containsKey("lat") && obj.containsKey("lon");
-  if (haveDirect) {
+  // Only accept positions that are not too stale
+  if (obj.containsKey("seen_pos")) {
+    double seenPos = obj["seen_pos"].as<double>();
+    if (seenPos > POSITION_MAX_AGE_S) return false;
+  }
+  if (obj.containsKey("lat") && obj.containsKey("lon")) {
     outLat = obj["lat"].as<double>();
     outLon = obj["lon"].as<double>();
     if (!(outLat == 0.0 && outLon == 0.0)) return true; // ignore (0,0)
   }
-  if (obj.containsKey("lastPosition") && obj["lastPosition"].is<JsonObject>()) {
-    JsonObject lp = obj["lastPosition"].as<JsonObject>();
-    if (lp.containsKey("lat") && lp.containsKey("lon")) {
-      outLat = lp["lat"].as<double>();
-      outLon = lp["lon"].as<double>();
-      if (!(outLat == 0.0 && outLon == 0.0)) return true;
-    }
-  }
+  // Do not use lastPosition fallback to avoid selecting stale tracks
   return false;
 }
 
-static FlightInfo parseNearest(JsonVariant root, size_t *outCount) {
-  FlightInfo best;
+static FlightInfo parseClosest(JsonVariant root) {
+  FlightInfo res;
+  if (!root.is<JsonObject>()) return res;
+  JsonObject robj = root.as<JsonObject>();
+  if (!robj.containsKey("ac") || !robj["ac"].is<JsonArray>()) return res;
+  JsonArray ac = robj["ac"].as<JsonArray>();
+  if (ac.size() == 0) return res;
+  JsonObject obj = ac[0].as<JsonObject>();
 
-  auto consider = [&](JsonObject obj) {
-    double lat, lon;
-    if (!extractLatLon(obj, lat, lon)) return;
-    if (outCount) (*outCount)++;
-    double d = haversineKm(HOME_LAT, HOME_LON, lat, lon);
-    if (obj.containsKey("dst")) {
-      // dst is typically nautical miles in many feeds; convert to km if present
-      double dstNm = obj["dst"].as<double>();
-      if (dstNm > 0) {
-        double kmFromDst = dstNm * 1.852;
-        // Prefer closer estimate; keep computed haversine as a sanity check
-        if (!isnan(kmFromDst) && kmFromDst > 0) d = min(d, kmFromDst);
-      }
-    }
-    // Build ident preference chain: flight -> r (registration) -> hex
-    String ident;
-    bool hasCallsign = false;
-    if (obj["flight"]) { ident = String(obj["flight"].as<const char *>()); hasCallsign = ident.length() > 0; }
-    else if (obj["r"]) ident = String(obj["r"].as<const char *>());
-    else if (obj["hex"]) ident = String(obj["hex"].as<const char *>());
-    else ident = String("(unknown)");
-    ident.trim();
+  double lat, lon;
+  if (!extractLatLon(obj, lat, lon)) return res;
 
-    long alt = obj["alt_baro"].isNull() ? -1 : obj["alt_baro"].as<long>();
-    String type = obj["t"].isNull() ? String("") : String(obj["t"].as<const char *>());
-    if (!obj["t"] && obj["type"]) type = String(obj["type"].as<const char *>());
-    String cat = obj["category"].isNull() ? String("") : String(obj["category"].as<const char *>());
+  // Build ident preference chain: flight -> r -> hex
+  String ident;
+  bool hasCallsign = false;
+  if (obj["flight"]) { ident = String(obj["flight"].as<const char *>()); hasCallsign = ident.length() > 0; }
+  else if (obj["r"]) ident = String(obj["r"].as<const char *>());
+  else if (obj["hex"]) ident = String(obj["hex"].as<const char *>());
+  else ident = String("(unknown)");
+  ident.trim();
 
-    if (!best.valid || d < best.distanceKm) {
-      best.valid = true;
-      best.ident = ident;
-      best.typeCode = type;
-      best.category = cat;
-      best.altitudeFt = alt;
-      best.lat = lat;
-      best.lon = lon;
-      best.distanceKm = d;
-      best.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char*>());
-      best.hasCallsign = hasCallsign;
-    }
-  };
+  long alt = obj["alt_baro"].isNull() ? -1 : obj["alt_baro"].as<long>();
+  String type = obj["t"].isNull() ? String("") : String(obj["t"].as<const char *>());
+  if (!obj["t"] && obj["type"]) type = String(obj["type"].as<const char *>());
+  String cat = obj["category"].isNull() ? String("") : String(obj["category"].as<const char *>());
 
-  if (root.is<JsonArray>()) {
-    for (JsonObject obj : root.as<JsonArray>()) consider(obj);
-  } else if (root.is<JsonObject>()) {
-    JsonObject robj = root.as<JsonObject>();
-    if (robj.containsKey("ac") && robj["ac"].is<JsonArray>()) {
-      for (JsonObject obj : robj["ac"].as<JsonArray>()) consider(obj);
-    } else if (robj.containsKey("aircraft") && robj["aircraft"].is<JsonArray>()) {
-      for (JsonObject obj : robj["aircraft"].as<JsonArray>()) consider(obj);
-    } else {
-      // Fallback: treat object itself as single aircraft
-      consider(robj);
-    }
-  }
-
-  return best;
+  res.valid = true;
+  res.ident = ident;
+  res.typeCode = type;
+  res.category = cat;
+  res.altitudeFt = alt;
+  res.lat = lat;
+  res.lon = lon;
+  res.distanceKm = haversineKm(HOME_LAT, HOME_LON, lat, lon); // 2D ground distance for display only
+  res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char*>());
+  res.hasCallsign = hasCallsign;
+  return res;
 }
 
 static bool fetchNearestFlight(FlightInfo &out) {
@@ -358,7 +361,7 @@ static bool fetchNearestFlight(FlightInfo &out) {
       if (base.startsWith("https://")) base.replace("https://", "http://");
       if (!base.startsWith("http")) base = String("http://") + base;
     }
-    base += "/v2/point/";
+    base += "/v2/closest/";
     base += String(HOME_LAT, 6);
     base += "/";
     base += String(HOME_LON, 6);
@@ -411,10 +414,8 @@ static bool fetchNearestFlight(FlightInfo &out) {
   acObj["alt_baro"] = true;
   acObj["lat"] = true;
   acObj["lon"] = true;
-  acObj["dst"] = true;
-  JsonObject lp = acObj.createNestedObject("lastPosition");
-  lp["lat"] = true;
-  lp["lon"] = true;
+  // closest endpoint returns only one aircraft, but keep minimal fields
+  acObj["seen_pos"] = true;
 
   DynamicJsonDocument doc(49152); // ~48KB; holds filtered subset
 
@@ -469,16 +470,14 @@ static bool fetchNearestFlight(FlightInfo &out) {
     }
   }
 
-  size_t count = 0;
-  FlightInfo best = parseNearest(doc.as<JsonVariant>(), &count);
-  Serial.print("[JSON] Aircraft considered: "); Serial.println(count);
-  if (best.valid) {
-    Serial.print("[JSON] Nearest: "); Serial.print(best.ident);
-    Serial.print("  dist "); Serial.print(best.distanceKm, 2); Serial.println(" km");
+  FlightInfo closest = parseClosest(doc.as<JsonVariant>());
+  if (closest.valid) {
+    Serial.print("[JSON] Closest: "); Serial.print(closest.ident);
+    Serial.print("  dist "); Serial.print(closest.distanceKm, 2); Serial.println(" km");
     // Classify operation (MIL/COM/PVT)
-    best.opClass = classifyOp(best);
-    Serial.print("[CLASS] op: "); Serial.println(best.opClass);
-    out = best;
+    closest.opClass = classifyOp(closest);
+    Serial.print("[CLASS] op: "); Serial.println(closest.opClass);
+    out = closest;
     return true;
   }
   Serial.println("[JSON] No valid aircraft found in response.");
@@ -491,7 +490,7 @@ static void renderFlight(const FlightInfo &fi) {
 
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.println("Nearest Aircraft");
+  display.println("Closest Aircraft");
 
   // Friendly aircraft type name on second line
   display.setCursor(0, 12);
@@ -542,20 +541,41 @@ static void renderFlight(const FlightInfo &fi) {
 }
 
 void setup() {
+  // Preload inactive output level before switching to OUTPUT to avoid glitches
+  const int INACTIVE = (RELAY_ACTIVE_HIGH ? LOW : HIGH);
+  digitalWrite(RELAY_IN1_PIN, INACTIVE);
+  digitalWrite(RELAY_IN2_PIN, INACTIVE);
+  digitalWrite(RELAY_IN3_PIN, INACTIVE);
+  digitalWrite(RELAY_IN4_PIN, INACTIVE);
+  if (RELAY_IN1_PIN >= 0) pinMode(RELAY_IN1_PIN, OUTPUT);
+  if (RELAY_IN2_PIN >= 0) pinMode(RELAY_IN2_PIN, OUTPUT);
+  if (RELAY_IN3_PIN >= 0) pinMode(RELAY_IN3_PIN, OUTPUT);
+  if (RELAY_IN4_PIN >= 0) pinMode(RELAY_IN4_PIN, OUTPUT);
+  if (RELAY_IN1_PIN >= 0) digitalWrite(RELAY_IN1_PIN, INACTIVE);
+  if (RELAY_IN2_PIN >= 0) digitalWrite(RELAY_IN2_PIN, INACTIVE);
+  if (RELAY_IN3_PIN >= 0) digitalWrite(RELAY_IN3_PIN, INACTIVE);
+  if (RELAY_IN4_PIN >= 0) digitalWrite(RELAY_IN4_PIN, INACTIVE);
+
   Serial.begin(115200);
-  delay(50);
+  delay(20);
   Serial.println("\n[Boot] Flight Display starting...");
-  delay(200);
-  // Relays
-  pinMode(RELAY_IN1_PIN, OUTPUT);
-  pinMode(RELAY_IN2_PIN, OUTPUT);
-  pinMode(RELAY_IN3_PIN, OUTPUT);
-  pinMode(RELAY_IN4_PIN, OUTPUT);
-  // All off initially
-  relayWrite(RELAY_IN1_PIN, false);
-  relayWrite(RELAY_IN2_PIN, false);
-  relayWrite(RELAY_IN3_PIN, false);
-  relayWrite(RELAY_IN4_PIN, false);
+#if defined(ESP32)
+  auto rr = esp_reset_reason();
+  Serial.print("[Boot] Reset reason: ");
+  switch (rr) {
+    case ESP_RST_POWERON: Serial.println("POWERON"); break;
+    case ESP_RST_EXT:     Serial.println("EXT"); break;
+    case ESP_RST_SW:      Serial.println("SW"); break;
+    case ESP_RST_PANIC:   Serial.println("PANIC"); break;
+    case ESP_RST_INT_WDT: Serial.println("INT_WDT"); break;
+    case ESP_RST_TASK_WDT:Serial.println("TASK_WDT"); break;
+    case ESP_RST_WDT:     Serial.println("WDT"); break;
+    case ESP_RST_DEEPSLEEP: Serial.println("DEEPSLEEP"); break;
+    case ESP_RST_BROWNOUT: Serial.println("BROWNOUT"); break;
+    case ESP_RST_SDIO:    Serial.println("SDIO"); break;
+    default:              Serial.println((int)rr); break;
+  }
+#endif
   // Allocate reusable body buffer once
   g_bodyBuf = (char*)malloc(BODY_BUF_CAP);
   if (g_bodyBuf) {
@@ -563,16 +583,22 @@ void setup() {
   } else {
     Serial.println("[MEM] Body buffer allocation failed");
   }
-  // Wi-Fi event logging
+  // Wi‑Fi event logging and dynamic power management
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
     switch(event) {
       case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         Serial.print("[WiFi] Disconnected. Reason: "); Serial.println(info.wifi_sta_disconnected.reason);
         wifiConnecting = false;
+        // Drop TX power while attempting to reconnect to reduce current spikes
+        WiFi.setTxPower(WIFI_BOOT_TXPOWER);
+        WiFi.setSleep(true);
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         Serial.print("[WiFi] Got IP: "); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
         wifiConnecting = false;
+        // Raise TX power after association; disable modem sleep for responsiveness
+        WiFi.setTxPower(WIFI_RUN_TXPOWER);
+        WiFi.setSleep(false);
         break;
       default: break;
     }
@@ -581,7 +607,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  WiFi.setSleep(false);
+  // Start with low TX power and enable sleep for gentle connect
+  WiFi.setTxPower(WIFI_BOOT_TXPOWER);
+  WiFi.setSleep(true);
   wifiInitialized = true;
   // I2C + Display
   Wire.begin(OLED_SDA, OLED_SCL);
@@ -592,7 +620,8 @@ void setup() {
   display.display();
 
   showSplash("Booting...");
-  delay(300);
+  // Allow power rails to settle before enabling Wi‑Fi/TLS
+  delay(BOOT_POWER_SETTLE_MS);
   connectWiFi();
 }
 
