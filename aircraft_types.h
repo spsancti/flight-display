@@ -115,6 +115,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"E50P", "",   "Embraer",     "Phenom 100", 4, 6},
     {"E55P", "",   "Embraer",     "Phenom 300", 6, 9},
     {"EA50", "",   "Eclipse",     "Eclipse 500", 4, 5},
+    {"SF50", "",   "Cirrus",      "Vision Jet SF50", 5, 7},
     {"P180", "",   "Piaggio",     "P.180 Avanti", 7, 9},
     {"BE20", "",   "Beechcraft",  "King Air 200", 7, 9},
     {"BE58", "",   "Beechcraft",  "Baron 58", 6, 6},
@@ -151,6 +152,11 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"F50",  "",    "Fokker",      "Fokker 50", 46, 58},
     {"F70",  "",    "Fokker",      "Fokker 70", 70, 80},
     {"F100", "",    "Fokker",      "Fokker 100", 97, 109},
+    {"MU2",  "",    "Mitsubishi",  "MU-2", 6, 10},
+    {"M28",  "",    "PZL",         "M28 Skytruck", 19, 19},
+    {"C212", "",    "CASA",        "C-212 Aviocar", 21, 26},
+    {"CN35", "",    "Airbus Military", "CN-235", 35, 45},
+    {"C295", "",    "Airbus Military", "C-295", 48, 71},
     {"B461", "",    "BAe",         "BAe 146-100", 70, 82},
     {"B462", "",    "BAe",         "BAe 146-200", 85, 100},
     {"B463", "",    "BAe",         "BAe 146-300", 100, 128},
@@ -187,6 +193,10 @@ static const AircraftTypeInfo kTypeInfo[] = {
     {"C310", "", "Cessna", "310", 4, 6},
     {"C185", "", "Cessna", "185 Skywagon", 4, 6},
     {"C180", "", "Cessna", "180 Skywagon", 4, 4},
+    {"C350", "", "Cessna", "350 Corvalis", 4, 4},
+    {"C400", "", "Cessna", "400 Corvalis TT", 4, 4},
+    {"C414", "", "Cessna", "414 Chancellor", 6, 8},
+    {"C421", "", "Cessna", "421 Golden Eagle", 6, 8},
     {"P28A", "", "Piper", "PA-28 Cherokee", 2, 4},
     {"P28R", "", "Piper", "PA-28R Arrow", 4, 4},
     {"P28T", "", "Piper", "PA-28RT Turbo Arrow", 4, 4},
@@ -376,6 +386,7 @@ inline bool aircraftSeatRange(const String& rawCode, uint16_t& minOut, uint16_t&
   if (code.startsWith("PA46") || code.startsWith("P46T") || code.startsWith("PA34") || code.startsWith("PA32") || code.startsWith("PA31") || code.startsWith("PA44")) { minOut = 4; maxOut = 8; return true; }
   if (code.startsWith("DA4") || code.startsWith("DA6")) { minOut = 4; maxOut = 7; return true; }
   if (code.startsWith("SR2")) { minOut = 4; maxOut = 4; return true; }
+  if (code.equals("SF50")) { minOut = 5; maxOut = 7; return true; }
   if (code.startsWith("PA28")) { minOut = 2; maxOut = 4; return true; }
   if (code.startsWith("C15")) { minOut = 2; maxOut = 2; return true; }
   if (code.startsWith("C31")) { minOut = 4; maxOut = 6; return true; }
@@ -383,6 +394,11 @@ inline bool aircraftSeatRange(const String& rawCode, uint16_t& minOut, uint16_t&
   if (code.startsWith("C18")) { minOut = 4; maxOut = 4; return true; }
   if (code.startsWith("C19")) { minOut = 4; maxOut = 6; return true; }
   if (code.startsWith("C20") || code.startsWith("T20") || code.startsWith("U20") || code.startsWith("P20")) { minOut = 6; maxOut = 7; return true; }
+  if (code.startsWith("C40") || code.startsWith("C35")) { minOut = 4; maxOut = 4; return true; }
+  if (code.startsWith("C41") || code.startsWith("C42")) { minOut = 6; maxOut = 8; return true; }
+  if (code.startsWith("MU2")) { minOut = 6; maxOut = 10; return true; }
+  if (code.startsWith("M28")) { minOut = 19; maxOut = 19; return true; }
+  if (code.startsWith("C21") || code.startsWith("CN3") || code.startsWith("C29")) { minOut = 26; maxOut = 71; return true; }
   return false;
 }
 
