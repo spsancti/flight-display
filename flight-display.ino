@@ -77,10 +77,8 @@ static const size_t BODY_BUF_CAP = 65536;  // 64KB cap
 static char* g_bodyBuf = nullptr;
 // Wi‑Fi reconnect state
 static bool wifiConnecting = false;
-static uint32_t wifiLastAttemptMs = 0;
-static uint32_t wifiBackoffMs = 0; // adaptive backoff
-static const uint32_t WIFI_BACKOFF_MIN_MS = 2000;
-static const uint32_t WIFI_BACKOFF_MAX_MS = 60000;
+static bool wifiInitialized = false;
+static bool wifiEverBegun = false;
 
 // MIL cache
 struct MilCacheEntry { String hex; uint32_t ts; bool isMil; };
@@ -245,22 +243,15 @@ static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
 
 static void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
-  const uint32_t now = millis();
-  // Respect backoff and avoid re-entrant begin() while connecting
-  if (wifiConnecting && (now - wifiLastAttemptMs) < WIFI_CONNECT_TIMEOUT_MS) return;
-  if (wifiBackoffMs > 0 && (now - wifiLastAttemptMs) < wifiBackoffMs) return;
-
-  WiFi.mode(WIFI_STA);
-  WiFi.persistent(false);
-  WiFi.setAutoReconnect(true);
-  WiFi.setSleep(false);
-  // Do not force disconnect if we're mid-connect; just (re)begin
+  // Configure once in setup; do not change config while connecting
+  if (!wifiInitialized) return;
+  // Begin only once; rely on auto-reconnect afterwards
+  if (wifiEverBegun) return;
   Serial.print("[WiFi] Connecting to "); Serial.println(WIFI_SSID);
   showSplash("Connecting Wi-Fi...", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   wifiConnecting = true;
-  wifiLastAttemptMs = now;
-  if (wifiBackoffMs == 0) wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
+  wifiEverBegun = true;
 }
 
 static double deg2rad(double deg) {
@@ -578,18 +569,20 @@ void setup() {
       case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         Serial.print("[WiFi] Disconnected. Reason: "); Serial.println(info.wifi_sta_disconnected.reason);
         wifiConnecting = false;
-        // Exponential backoff on failure
-        if (wifiBackoffMs == 0) wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
-        else wifiBackoffMs = min(WIFI_BACKOFF_MAX_MS, wifiBackoffMs * 2);
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         Serial.print("[WiFi] Got IP: "); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
         wifiConnecting = false;
-        wifiBackoffMs = WIFI_BACKOFF_MIN_MS;
         break;
       default: break;
     }
   });
+  // Configure Wi‑Fi once
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
+  wifiInitialized = true;
   // I2C + Display
   Wire.begin(OLED_SDA, OLED_SCL);
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
