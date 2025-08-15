@@ -14,6 +14,7 @@
 #if defined(ESP32)
 #include <esp_system.h>
 #endif
+#include <WebServer.h>
 
 #include "config.h"  // Create from config.example.h and do not commit secrets
 #include "aircraft_types.h"
@@ -90,6 +91,7 @@ static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool
 #endif
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET_PIN);
+static WebServer g_server(80);
 
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
 static const uint32_t FETCH_INTERVAL_MS = 30000;        // 30s between API calls
@@ -201,7 +203,12 @@ struct FlightInfo {
   bool hasCallsign = false;
   String opClass;   // MIL/COM/PVT
   bool valid = false;
+  int seatOverride = -1; // if >0, override seat display
 };
+
+// Shared display state so network and test endpoints can update consistently
+static bool g_haveDisplayed = false;
+static FlightInfo g_lastShown;
 
 static String classifyOp(const FlightInfo &fi) {
   // 1) Military always wins regardless of size
@@ -484,6 +491,81 @@ static bool fetchNearestFlight(FlightInfo &out) {
   return false;
 }
 
+// Apply a provided JSON payload (same schema as /v2/closest) to update display
+static bool applyClosestJson(const char* json, size_t len, FlightInfo &out) {
+  if (!json || len == 0) return false;
+  // Build a filter to only keep what we need
+  StaticJsonDocument<256> filter;
+  JsonArray acArr = filter.createNestedArray("ac");
+  JsonObject acObj = acArr.createNestedObject();
+  acObj["flight"] = true;
+  acObj["r"] = true;
+  acObj["hex"] = true;
+  acObj["t"] = true;
+  acObj["type"] = true;
+  acObj["alt_baro"] = true;
+  acObj["lat"] = true;
+  acObj["lon"] = true;
+  acObj["seen_pos"] = true;
+
+  DynamicJsonDocument doc(49152);
+  DeserializationError err = deserializeJson(doc, json, len, DeserializationOption::Filter(filter));
+  if (err) {
+    Serial.print("[TEST] JSON parse error: "); Serial.println(err.c_str());
+    return false;
+  }
+  FlightInfo closest = parseClosest(doc.as<JsonVariant>());
+  if (!closest.valid) return false;
+  closest.opClass = classifyOp(closest);
+  out = closest;
+  return true;
+}
+
+static void handleTestClosestPut() {
+  // Expect application/json body matching /v2/closest response
+  if (!g_server.hasArg("plain")) {
+    g_server.send(400, "text/plain", "Missing body");
+    return;
+  }
+  String body = g_server.arg("plain");
+  Serial.print("[TEST] PUT /test/closest body bytes: "); Serial.println(body.length());
+  FlightInfo fi;
+  // Try simple schema first
+  {
+    StaticJsonDocument<1024> doc;
+    DeserializationError err = deserializeJson(doc, body);
+    if (!err && doc.is<JsonObject>() && !doc.containsKey("ac")) {
+      JsonObject o = doc.as<JsonObject>();
+      String code;
+      if (o["t"]) code = String(o["t"].as<const char*>());
+      else if (o["type"]) code = String(o["type"].as<const char*>());
+      code.trim();
+      if (code.length() > 0) {
+        fi.valid = true;
+        fi.typeCode = code;
+        fi.ident = o["ident"].isNull() ? code : String(o["ident"].as<const char*>());
+        fi.altitudeFt = o["alt"].isNull() ? -1 : (long)o["alt"].as<long>();
+        fi.distanceKm = o["dist"].isNull() ? NAN : o["dist"].as<double>();
+        if (!o["op"].isNull()) { fi.opClass = String(o["op"].as<const char*>()); fi.opClass.trim(); fi.opClass.toUpperCase(); }
+        if (!o["seats"].isNull()) { int s = o["seats"].as<int>(); if (s > 0) fi.seatOverride = s; }
+      }
+    }
+  }
+  // If not valid, fall back to full /v2/closest schema
+  if (!fi.valid) {
+    if (!applyClosestJson(body.c_str(), body.length(), fi)) {
+      g_server.send(400, "text/plain", "Invalid JSON");
+      return;
+    }
+  }
+  // Render and update relays immediately
+  renderFlight(fi);
+  g_lastShown = fi;
+  g_haveDisplayed = true;
+  updateRelaysForState(true, fi.opClass, false);
+  g_server.send(200, "application/json", String("{\"status\":\"ok\",\"ident\":\"") + fi.ident + "\"}");
+}
+
 static void renderFlight(const FlightInfo &fi) {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -503,10 +585,13 @@ static void renderFlight(const FlightInfo &fi) {
   if (friendly.length() > 21) friendly.remove(21);
   display.println(friendly);
 
-  // Third line: upper seat limit if known
+  // Third line: seats (override if provided)
   display.setCursor(0, 22);
   uint16_t minSeats = 0, maxSeats = 0;
-  if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) {
+  if (fi.seatOverride > 0) {
+    display.print("Seats: ");
+    display.println(fi.seatOverride);
+  } else if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) {
     display.print("Seats: ");
     display.println(maxSeats);
   } else {
@@ -599,6 +684,8 @@ void setup() {
         // Raise TX power after association; disable modem sleep for responsiveness
         WiFi.setTxPower(WIFI_RUN_TXPOWER);
         WiFi.setSleep(false);
+        // Wi‑Fi up; print reminder of server endpoint
+        Serial.println("[HTTP] Server ready on port 80");
         break;
       default: break;
     }
@@ -623,12 +710,16 @@ void setup() {
   // Allow power rails to settle before enabling Wi‑Fi/TLS
   delay(BOOT_POWER_SETTLE_MS);
   connectWiFi();
+
+  // Start HTTP test server regardless of Wi‑Fi state; it will accept once IP is assigned
+  g_server.on("/test/closest", HTTP_PUT, handleTestClosestPut);
+  g_server.onNotFound([](){ g_server.send(404, "text/plain", "Not Found"); });
+  g_server.begin();
+  Serial.println("[HTTP] Test server listening on /test/closest (PUT)");
 }
 
 void loop() {
   static uint32_t lastFetch = 0;
-  static bool haveDisplayed = false;
-  static FlightInfo lastShown;
   static uint32_t lastBlink = 0;
   static bool blinkPhase = false;
 
@@ -640,27 +731,30 @@ void loop() {
     lastFetch = millis();
     FlightInfo nearest;
     if (fetchNearestFlight(nearest)) {
-      if (!haveDisplayed || !sameFlightDisplay(nearest, lastShown)) {
+      if (!g_haveDisplayed || !sameFlightDisplay(nearest, g_lastShown)) {
         renderFlight(nearest);
-        lastShown = nearest;
-        haveDisplayed = true;
-        updateRelaysForState(true, lastShown.opClass, false);
+        g_lastShown = nearest;
+        g_haveDisplayed = true;
+        updateRelaysForState(true, g_lastShown.opClass, false);
       }
     } else {
-      if (!haveDisplayed) {
+      if (!g_haveDisplayed) {
         showSplash("No data", "Check Wi-Fi/API");
       }
     }
   }
 
   // Blink status relay until first display
-  if (!haveDisplayed) {
+  if (!g_haveDisplayed) {
     if (millis() - lastBlink >= 500) {
       lastBlink = millis();
       blinkPhase = !blinkPhase;
       updateRelaysForState(false, String(), blinkPhase);
     }
   }
+
+  // Handle incoming HTTP requests for test endpoint
+  g_server.handleClient();
 
   delay(100);
 }
