@@ -21,6 +21,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "BCS3", "223", "Airbus", "A220-300", 130, 160 },
   { "A221", "221", "Airbus", "A220-100", 108, 135 },
   { "A223", "223", "Airbus", "A220-300", 130, 160 },
+  { "A225", "225", "Airbus", "A220-500 (projected)", 150, 190 },
   // Airbus A320 family
   { "A318", "318", "Airbus", "A318", 107, 107 },
   { "A319", "319", "Airbus", "A319", 124, 156 },
@@ -40,11 +41,15 @@ static const AircraftTypeInfo kTypeInfo[] = {
   // Airbus A350/A380
   { "A359", "359", "Airbus", "A350-900", 300, 350 },
   { "A35K", "35K", "Airbus", "A350-1000", 350, 410 },
+  { "A35F", "",   "Airbus", "A350F (pax eq.)", 0, 0 },
   { "A388", "388", "Airbus", "A380-800", 450, 615 },
   // Airbus Regional/Older
   { "A300", "300", "Airbus", "A300", 240, 300 },
   { "A30B", "30B", "Airbus", "A300-600", 240, 300 },
+  { "A306", "306", "Airbus", "A300-600R", 266, 304 },
+  { "A300F", "",   "Airbus", "A300 Freighter (pax eq.)", 0, 0 },
   { "A310", "310", "Airbus", "A310", 190, 220 },
+  { "A3ST", "",   "Airbus", "BelugaST", 5, 5 },
 
   // Boeing 737 family
   { "B731", "731", "Boeing", "737-100", 85, 104 },
@@ -61,10 +66,17 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "B37M", "7M7", "Boeing", "737 MAX 7", 138, 172 },
   { "B3XM", "7MX", "Boeing", "737 MAX 10", 204, 230 },
   // Boeing 747/757/767/777/787
+  { "B701", "701", "Boeing", "707-120", 110, 179 },
+  { "B703", "703", "Boeing", "707-320", 141, 189 },
+  { "B720", "720", "Boeing", "720", 116, 149 },
+  { "B721", "721", "Boeing", "727-100", 94, 131 },
+  { "B722", "722", "Boeing", "727-200", 145, 189 },
   { "B741", "741", "Boeing", "747-100", 366, 452 },
   { "B742", "742", "Boeing", "747-200", 366, 452 },
   { "B743", "743", "Boeing", "747-300", 412, 496 },
   { "B744", "744", "Boeing", "747-400", 416, 524 },
+  { "B741F", "",   "Boeing", "747-100F (pax eq.)", 0, 0 },
+  { "BLCF", "",    "Boeing", "747 LCF Dreamlifter", 8, 8 },
   { "B748", "748", "Boeing", "747-8", 410, 467 },
   { "B752", "752", "Boeing", "757-200", 178, 235 },
   { "B753", "753", "Boeing", "757-300", 243, 295 },
@@ -120,11 +132,18 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "JS31", "", "British Aerospace", "Jetstream 31", 18, 19 },
   { "JS41", "", "British Aerospace", "Jetstream 41", 29, 30 },
   { "F50", "", "Fokker", "50", 46, 62 },
+  { "F70", "F70", "Fokker", "70", 72, 85 },
+  { "F100", "100", "Fokker", "100", 97, 109 },
+  { "YS11", "", "NAMC", "YS-11", 60, 64 },
+  { "BA11", "", "British Aerospace", "BAe 146-100", 70, 82 },
+  { "BA12", "", "British Aerospace", "BAe 146-200", 85, 100 },
+  { "BA13", "", "British Aerospace", "BAe 146-300", 100, 116 },
 
   // Regional jets
   { "ARJ1", "AR1", "Comac", "ARJ21-700", 78, 90 },
   { "SU95", "SU9", "Sukhoi", "Superjet 100", 87, 108 },
   { "MRJ9", "M90", "Mitsubishi", "SpaceJet M90", 88, 92 },
+  { "C919", "",   "Comac", "C919", 158, 174 },
   { "E135", "",   "Embraer", "ERJ 135", 37, 37 },
   { "E140", "",   "Embraer", "ERJ 140", 44, 44 },
   { "E145", "",   "Embraer", "ERJ 145", 45, 50 },
@@ -138,6 +157,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "C525", "", "Cessna", "CitationJet CJ1", 5, 6 },
   { "C550", "", "Cessna", "Citation II/Bravo", 7, 9 },
   { "C560", "", "Cessna", "Citation V/Ultra/Encore", 7, 9 },
+  { "C56X", "", "Cessna", "Citation Excel/XLS", 8, 9 },
   { "E50P", "", "Embraer", "Phenom 100", 4, 6 },
   { "E55P", "", "Embraer", "Phenom 300", 6, 9 },
   { "FA50", "", "Dassault", "Falcon 50", 9, 9 },
@@ -168,11 +188,13 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "C208", "", "Cessna", "208 Caravan", 9, 12 },
   { "C208A", "", "Cessna", "208 Caravan Amphibian", 9, 12 },
   { "C210", "", "Cessna", "210", 6, 6 },
+  { "C337", "", "Cessna", "337 Skymaster", 4, 6 },
   { "BE58", "", "Beechcraft", "Baron 58", 6, 6 },
   { "PA31", "", "Piper", "Navajo/Chieftain", 6, 9 },
   { "PA34", "", "Piper", "Seneca", 6, 6 },
   { "PA44", "", "Piper", "Seminole", 4, 4 },
   { "PA46", "", "Piper", "Malibu/Mirage/Meridian", 5, 6 },
+  { "M600", "", "Piper", "M600", 5, 6 },
   { "P28A", "", "Piper", "PA-28 Archer", 4, 4 },
   { "P28R", "", "Piper", "PA-28R Arrow", 4, 4 },
   { "SR20", "", "Cirrus", "SR20", 4, 4 },
@@ -189,6 +211,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "B06", "", "Bell", "206", 4, 6 },
   { "B407", "", "Bell", "407", 5, 6 },
   { "B412", "", "Bell", "412", 13, 15 },
+  { "UH60", "", "Sikorsky", "UH-60 Black Hawk", 11, 14 },
+  { "CH47", "", "Boeing", "CH-47 Chinook", 33, 55 },
   { "EC35", "", "Airbus Helicopters", "H135/EC135", 6, 7 },
   { "EC55", "", "Airbus Helicopters", "H155/EC155", 10, 13 },
   { "H160", "", "Airbus Helicopters", "H160", 10, 12 },
@@ -197,6 +221,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "A189", "", "AgustaWestland", "AW189", 14, 19 },
   { "S76", "", "Sikorsky", "S-76", 12, 13 },
   { "S92", "", "Sikorsky", "S-92", 19, 19 },
+  { "MI8",  "", "Mil", "Mi-8/17 Hip", 24, 36 },
+  { "KA32", "", "Kamov", "Ka-32", 12, 16 },
 
   // Seaplanes and bush
   { "DHC2", "", "de Havilland Canada", "DHC-2 Beaver", 6, 7 },
@@ -213,7 +239,20 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "B2", "", "Northrop Grumman", "B-2 Spirit", 2, 2 },
   { "B52", "", "Boeing", "B-52 Stratofortress", 5, 8 },
   { "C17", "", "Boeing", "C-17 Globemaster III", 3, 170 },
+  { "C5",  "", "Lockheed Martin", "C-5 Galaxy", 15, 345 },
   { "C130", "", "Lockheed Martin", "C-130 Hercules", 2, 92 },
+  { "KC10", "", "McDonnell Douglas", "KC-10 Extender", 75, 75 },
+  { "KC46", "", "Boeing", "KC-46 Pegasus", 65, 65 },
+  { "P8",   "", "Boeing", "P-8 Poseidon", 9, 11 },
+  { "E3TF", "", "Boeing", "E-3 Sentry AWACS", 13, 19 },
+  { "E7",   "", "Boeing", "E-7 Wedgetail", 12, 12 },
+  { "C27J", "", "Leonardo", "C-27J Spartan", 2, 60 },
+  { "CN35", "", "Airbus Military", "CN-235", 35, 45 },
+  { "C295", "", "Airbus Military", "C-295", 48, 71 },
+  { "TU154", "T54", "Tupolev", "Tu-154", 164, 180 },
+  { "IL96",  "I96", "Ilyushin", "Il-96", 262, 300 },
+  { "AN148", "",   "Antonov", "An-148", 68, 85 },
+  { "AN158", "",   "Antonov", "An-158", 97, 99 },
   { "EUFI", "", "Eurofighter", "Typhoon", 1, 2 },
 
   // --- Additions (curated for broader coverage; memory-conscious) ---
@@ -345,6 +384,7 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "C525", "Cessna CitationJet CJ1" },
   { "C550", "Cessna Citation II/Bravo" },
   { "C560", "Cessna Citation V/Ultra/Encore" },
+  { "C56X", "Cessna Citation Excel/XLS" },
   { "E50P", "Embraer Phenom 100" },
   { "E55P", "Embraer Phenom 300" },
   { "FA50", "Dassault Falcon 50" },
@@ -458,6 +498,18 @@ inline void aircraftSeatRange(const char* icao, uint16_t& outMin, uint16_t& outM
     outMax = 244;
     return;
   }
+  // B70X (707)
+  if (strncasecmp(icao, "B70", 3) == 0) {
+    outMin = 110;
+    outMax = 189;
+    return;
+  }
+  // B72X (727)
+  if (strncasecmp(icao, "B72", 3) == 0) {
+    outMin = 94;
+    outMax = 189;
+    return;
+  }
   // B73X
   if (strncasecmp(icao, "B73", 3) == 0) {
     outMin = 108;
@@ -492,6 +544,24 @@ inline void aircraftSeatRange(const char* icao, uint16_t& outMin, uint16_t& outM
   if (strncasecmp(icao, "DH8", 3) == 0) {
     outMin = 37;
     outMax = 90;
+    return;
+  }
+  // BAe 146 family (BA11/12/13)
+  if (strncasecmp(icao, "BA1", 3) == 0) {
+    outMin = 70;
+    outMax = 116;
+    return;
+  }
+  // YS-11
+  if (strncasecmp(icao, "YS1", 3) == 0) {
+    outMin = 60;
+    outMax = 64;
+    return;
+  }
+  // C919
+  if (strncasecmp(icao, "C91", 3) == 0) {
+    outMin = 158;
+    outMax = 174;
     return;
   }
   // GA Caravan
@@ -537,12 +607,17 @@ inline bool aircraftSeatRange(const String& rawCode, uint16_t& minOut, uint16_t&
   auto pref = [&](const char* pfx){ return strncasecmp(code.c_str(), pfx, strlen(pfx)) == 0; };
   auto eq   = [&](const char* s){ return strcasecmp(code.c_str(), s) == 0; };
   if (pref("A31") || pref("A32")) { minOut=150; maxOut=244; return true; }
+  if (pref("B70")) { minOut=110; maxOut=189; return true; }
+  if (pref("B72")) { minOut=94;  maxOut=189; return true; }
   if (pref("B73")) { minOut=108; maxOut=230; return true; }
   if (pref("B78")) { minOut=242; maxOut=330; return true; }
   if (pref("E17") || pref("E19") || pref("E29") || pref("E75")) { minOut=66; maxOut=146; return true; }
   if (pref("CRJ")) { minOut=50; maxOut=104; return true; }
   if (pref("AT4") || pref("AT7")) { minOut=46; maxOut=78; return true; }
   if (pref("DH8")) { minOut=37; maxOut=90; return true; }
+  if (pref("BA1")) { minOut=70; maxOut=116; return true; }
+  if (pref("YS1")) { minOut=60; maxOut=64; return true; }
+  if (pref("C91")) { minOut=158; maxOut=174; return true; }
   if (eq("C208") || eq("C208A")) { minOut=9; maxOut=12; return true; }
   if (eq("R44")) { minOut=4; maxOut=4; return true; }
   if (eq("A139")) { minOut=12; maxOut=15; return true; }
