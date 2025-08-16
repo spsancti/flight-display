@@ -85,8 +85,8 @@ static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool
 #define SCREEN_HEIGHT 64
 #endif
 
-// SPI OLED (SSD1322) via U8g2, full framebuffer, HW SPI
-U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, PIN_CS, PIN_DC, PIN_RST);
+// SPI OLED (SSD1322) via U8g2, full framebuffer, HW SPI (rotated 180°)
+U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, PIN_CS, PIN_DC, PIN_RST);
 static WebServer g_server(80);
 
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
@@ -257,18 +257,43 @@ static void drawCentered(const String &text, int16_t baselineY) {
 static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
-  // Title font
-  u8g2.setFont(u8g2_font_10x20_tf);
-  int16_t base = u8g2.getAscent();
+
+  // Fonts
+  const uint8_t* titleFont = u8g2_font_10x20_tf;
+  const uint8_t* bodyFont  = u8g2_font_6x12_tf;
+
+  // Measure line heights
+  u8g2.setFont(titleFont);
+  int16_t titleAscent = u8g2.getAscent();
+  int16_t titleDescent = -u8g2.getDescent();
+  int16_t titleH = titleAscent + titleDescent;
+
+  u8g2.setFont(bodyFont);
+  int16_t bodyAscent = u8g2.getAscent();
+  int16_t bodyDescent = -u8g2.getDescent();
+  int16_t bodyH = bodyAscent + bodyDescent;
+
+  const int16_t gap = 6; // vertical spacing between lines
+  int16_t totalH = titleH + gap + bodyH + ((msgBottom) ? (gap + bodyH) : 0);
+  if (totalH < 0) totalH = 0;
+  int16_t y0 = (SCREEN_HEIGHT - totalH) / 2;
+
+  // Draw title centered
+  u8g2.setFont(titleFont);
+  int16_t base = y0 + titleAscent;
   drawCentered("Flight Display", base);
-  // Messages
-  u8g2.setFont(u8g2_font_6x12_tf);
-  base = u8g2.getAscent() + 24; // place under title
+
+  // Draw first message
+  u8g2.setFont(bodyFont);
+  base = y0 + titleH + gap + bodyAscent;
   drawCentered(String(msgTop), base);
+
+  // Optional second message
   if (msgBottom) {
-    base += 16;
+    base = y0 + titleH + gap + bodyH + gap + bodyAscent;
     drawCentered(String(msgBottom), base);
   }
+
   u8g2.sendBuffer();
 }
 
