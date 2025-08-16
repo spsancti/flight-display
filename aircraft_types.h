@@ -62,6 +62,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "AN30", "A30", "Antonov", "An-30", 33 },
   { "AN32", "A32", "Antonov", "An-32", 52 },
   { "AN72", "AN7", "Antonov", "An-72/74", 52 },
+  // Pseudo types (TIS-B)
+  { "TISB_OTHER", "", "TIS-B", "TIS-B Other", 6 },
 
   // Boeing 737 family
   { "B731", "731", "Boeing", "737-100", 104 },
@@ -643,6 +645,7 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "IL86", "Ilyushin Il-86" },
   { "IL76", "Ilyushin Il-76" },
   { "IL18", "Ilyushin Il-18" },
+  { "TISB_OTHER", "TIS-B Other" },
   { "GL5T", "Global 5000" },
   { "GLEX", "Global Express" },
   { "GA7C", "Gulfstream G700" },
@@ -902,6 +905,7 @@ inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
   if (strncasecmp(icao, "AT4", 3) == 0 || strncasecmp(icao, "AT7", 3) == 0) { maxOut = 78; return true; }
   if (strncasecmp(icao, "DH8", 3) == 0) { maxOut = 90; return true; }
   if (strncasecmp(icao, "DH2", 3) == 0) { maxOut = 7; return true; }
+  if (strncasecmp(icao, "TISB", 4) == 0) { maxOut = 6; return true; }
   if (strncasecmp(icao, "BA1", 3) == 0) { maxOut = 116; return true; } // BAe 146
   if (strncasecmp(icao, "YS1", 3) == 0) { maxOut = 64; return true; }
   if (strncasecmp(icao, "C91", 3) == 0) { maxOut = 174; return true; } // C919
