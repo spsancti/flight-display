@@ -5,395 +5,397 @@
 
 #include <Arduino.h>
 
-// Rich dataset: ICAO/IATA/manufacturer/model/seat range
+// Rich dataset: ICAO/IATA/manufacturer/model/max seats
 struct AircraftTypeInfo {
   const char* icao;
   const char* iata;  // may be empty
   const char* manufacturer;
   const char* model;
-  uint16_t minSeats;
-  uint16_t maxSeats;
+  uint16_t maxSeats; // upper seat count only
 };
 
 static const AircraftTypeInfo kTypeInfo[] = {
   // Airbus A220 family
-  { "BCS1", "221", "Airbus", "A220-100", 108, 135 },
-  { "BCS3", "223", "Airbus", "A220-300", 130, 160 },
-  { "A221", "221", "Airbus", "A220-100", 108, 135 },
-  { "A223", "223", "Airbus", "A220-300", 130, 160 },
+  { "BCS1", "221", "Airbus", "A220-100", 135 },
+  { "BCS3", "223", "Airbus", "A220-300", 160 },
+  { "A221", "221", "Airbus", "A220-100", 135 },
+  { "A223", "223", "Airbus", "A220-300", 160 },
   // Airbus A320 family
-  { "A318", "318", "Airbus", "A318", 107, 107 },
-  { "A319", "319", "Airbus", "A319", 124, 156 },
-  { "A320", "320", "Airbus", "A320", 150, 186 },
-  { "A321", "321", "Airbus", "A321", 185, 236 },
-  { "A19N", "31N", "Airbus", "A319neo", 120, 160 },
-  { "A20N", "32N", "Airbus", "A320neo", 150, 194 },
-  { "A21N", "32Q", "Airbus", "A321neo", 185, 244 },
+  { "A318", "318", "Airbus", "A318", 107 },
+  { "A319", "319", "Airbus", "A319", 156 },
+  { "A320", "320", "Airbus", "A320", 186 },
+  { "A321", "321", "Airbus", "A321", 236 },
+  { "A19N", "31N", "Airbus", "A319neo", 160 },
+  { "A20N", "32N", "Airbus", "A320neo", 194 },
+  { "A21N", "32Q", "Airbus", "A321neo", 244 },
   // Airbus A330/A340
-  { "A332", "332", "Airbus", "A330-200", 210, 260 },
-  { "A333", "333", "Airbus", "A330-300", 250, 300 },
-  { "A337", "",   "Airbus", "A330-700 BelugaXL", 0, 0 },
-  { "A338", "338", "Airbus", "A330-800neo", 220, 260 },
-  { "A339", "339", "Airbus", "A330-900neo", 260, 300 },
-  { "A342", "342", "Airbus", "A340-200", 240, 261 },
-  { "A343", "343", "Airbus", "A340-300", 250, 295 },
-  { "A345", "345", "Airbus", "A340-500", 270, 310 },
-  { "A346", "346", "Airbus", "A340-600", 310, 380 },
+  { "A332", "332", "Airbus", "A330-200", 260 },
+  { "A333", "333", "Airbus", "A330-300", 300 },
+  { "A337", "",   "Airbus", "A330-700 BelugaXL", 0 },
+  { "A338", "338", "Airbus", "A330-800neo", 260 },
+  { "A339", "339", "Airbus", "A330-900neo", 300 },
+  { "A342", "342", "Airbus", "A340-200", 261 },
+  { "A343", "343", "Airbus", "A340-300", 295 },
+  { "A345", "345", "Airbus", "A340-500", 310 },
+  { "A346", "346", "Airbus", "A340-600", 380 },
   // Airbus A350/A380
-  { "A359", "359", "Airbus", "A350-900", 300, 350 },
-  { "A35K", "35K", "Airbus", "A350-1000", 350, 410 },
-  { "A35F", "",   "Airbus", "A350F (pax eq.)", 0, 0 },
-  { "A388", "388", "Airbus", "A380-800", 450, 615 },
+  { "A359", "359", "Airbus", "A350-900", 350 },
+  { "A35K", "35K", "Airbus", "A350-1000", 410 },
+  { "A35F", "",   "Airbus", "A350F (pax eq.)", 0 },
+  { "A388", "388", "Airbus", "A380-800", 615 },
   // Airbus Regional/Older
-  { "A300", "300", "Airbus", "A300", 240, 300 },
-  { "A30B", "30B", "Airbus", "A300-600", 240, 300 },
-  { "A306", "306", "Airbus", "A300-600R", 266, 304 },
-  { "A300F", "",   "Airbus", "A300 Freighter (pax eq.)", 0, 0 },
-  { "A310", "310", "Airbus", "A310", 190, 220 },
-  { "A3ST", "",   "Airbus", "BelugaST", 5, 5 },
-  { "A400", "",   "Airbus", "A400M Atlas", 0, 0 },
+  { "A300", "300", "Airbus", "A300", 300 },
+  { "A30B", "30B", "Airbus", "A300-600", 300 },
+  { "A306", "306", "Airbus", "A300-600R", 304 },
+  { "A300F", "",   "Airbus", "A300 Freighter (pax eq.)", 0 },
+  { "A310", "310", "Airbus", "A310", 220 },
+  { "A3ST", "",   "Airbus", "BelugaST", 5 },
+  { "A400", "",   "Airbus", "A400M Atlas", 0 },
 
   // Antonov
-  { "A124", "", "Antonov", "An-124 Ruslan", 0, 0 },
-  { "A225", "", "Antonov", "An-225 Mriya", 0, 0 },
-  { "AN12", "ANF", "Antonov", "An-12", 0, 0 },
-  { "AN24", "AN4", "Antonov", "An-24", 44, 52 },
-  { "AN26", "A26", "Antonov", "An-26", 40, 50 },
-  { "AN28", "A28", "Antonov", "An-28", 15, 19 },
-  { "AN30", "A30", "Antonov", "An-30", 30, 33 },
-  { "AN32", "A32", "Antonov", "An-32", 50, 52 },
-  { "AN72", "AN7", "Antonov", "An-72/74", 28, 52 },
+  { "A124", "", "Antonov", "An-124 Ruslan", 0 },
+  { "A225", "", "Antonov", "An-225 Mriya", 0 },
+  { "AN12", "ANF", "Antonov", "An-12", 0 },
+  { "AN24", "AN4", "Antonov", "An-24", 52 },
+  { "AN26", "A26", "Antonov", "An-26", 50 },
+  { "AN28", "A28", "Antonov", "An-28", 19 },
+  { "AN30", "A30", "Antonov", "An-30", 33 },
+  { "AN32", "A32", "Antonov", "An-32", 52 },
+  { "AN72", "AN7", "Antonov", "An-72/74", 52 },
 
   // Boeing 737 family
-  { "B731", "731", "Boeing", "737-100", 85, 104 },
-  { "B732", "732", "Boeing", "737-200", 97, 130 },
-  { "B733", "733", "Boeing", "737-300", 126, 149 },
-  { "B734", "734", "Boeing", "737-400", 146, 168 },
-  { "B735", "735", "Boeing", "737-500", 108, 132 },
-  { "B736", "736", "Boeing", "737-600", 108, 132 },
-  { "B737", "737", "Boeing", "737-700", 126, 149 },
-  { "B738", "738", "Boeing", "737-800", 162, 189 },
-  { "B739", "739", "Boeing", "737-900", 178, 220 },
-  { "B38M", "7M8", "Boeing", "737 MAX 8", 162, 197 },
-  { "B39M", "7M9", "Boeing", "737 MAX 9", 178, 220 },
-  { "B37M", "7M7", "Boeing", "737 MAX 7", 138, 172 },
-  { "B3XM", "7MJ", "Boeing", "737 MAX 10", 204, 230 },
+  { "B731", "731", "Boeing", "737-100", 104 },
+  { "B732", "732", "Boeing", "737-200", 130 },
+  { "B733", "733", "Boeing", "737-300", 149 },
+  { "B734", "734", "Boeing", "737-400", 168 },
+  { "B735", "735", "Boeing", "737-500", 132 },
+  { "B736", "736", "Boeing", "737-600", 132 },
+  { "B737", "737", "Boeing", "737-700", 149 },
+  { "B738", "738", "Boeing", "737-800", 189 },
+  { "B739", "739", "Boeing", "737-900", 220 },
+  { "B38M", "7M8", "Boeing", "737 MAX 8", 197 },
+  { "B39M", "7M9", "Boeing", "737 MAX 9", 220 },
+  { "B37M", "7M7", "Boeing", "737 MAX 7", 172 },
+  { "B3XM", "7MJ", "Boeing", "737 MAX 10", 230 },
   // Common IATA alias variants for 737 family
-  { "B733", "73C", "Boeing", "737-300 Winglets", 126, 149 },
-  { "B733", "73Y", "Boeing", "737-300 Freighter", 0, 0 },
-  { "B734", "73P", "Boeing", "737-400 Freighter", 0, 0 },
-  { "B737", "73W", "Boeing", "737-700 Winglets", 126, 149 },
-  { "B738", "73H", "Boeing", "737-800 Winglets", 162, 189 },
-  { "B738", "73K", "Boeing", "737-800 Freighter Winglets", 0, 0 },
-  { "B738", "73U", "Boeing", "737-800 Freighter", 0, 0 },
-  { "B739", "73J", "Boeing", "737-900 Winglets", 178, 220 },
+  { "B733", "73C", "Boeing", "737-300 Winglets", 149 },
+  { "B733", "73Y", "Boeing", "737-300 Freighter", 0 },
+  { "B734", "73P", "Boeing", "737-400 Freighter", 0 },
+  { "B737", "73W", "Boeing", "737-700 Winglets", 149 },
+  { "B738", "73H", "Boeing", "737-800 Winglets", 189 },
+  { "B738", "73K", "Boeing", "737-800 Freighter Winglets", 0 },
+  { "B738", "73U", "Boeing", "737-800 Freighter", 0 },
+  { "B739", "73J", "Boeing", "737-900 Winglets", 220 },
   // Boeing 747/757/767/777/787
-  { "B701", "701", "Boeing", "707-120", 110, 179 },
-  { "B703", "703", "Boeing", "707-320", 141, 189 },
-  { "B720", "720", "Boeing", "720", 116, 149 },
-  { "B721", "721", "Boeing", "727-100", 94, 131 },
-  { "B722", "722", "Boeing", "727-200", 145, 189 },
-  { "B741", "741", "Boeing", "747-100", 366, 452 },
-  { "B742", "742", "Boeing", "747-200", 366, 452 },
-  { "B743", "743", "Boeing", "747-300", 412, 496 },
-  { "B744", "744", "Boeing", "747-400", 416, 524 },
-  { "B741F", "",   "Boeing", "747-100F (pax eq.)", 0, 0 },
-  { "BLCF", "",    "Boeing", "747 LCF Dreamlifter", 8, 8 },
-  { "B748", "748", "Boeing", "747-8", 410, 467 },
-  { "B748", "74H", "Boeing", "747-8I", 410, 467 },
-  { "B748", "74N", "Boeing", "747-8F", 0, 0 },
-  { "B74R", "74R", "Boeing", "747SR", 498, 550 },
-  { "B74R", "74V", "Boeing", "747SR Freighter", 0, 0 },
-  { "B74S", "74L", "Boeing", "747SP", 276, 313 },
-  { "B752", "752", "Boeing", "757-200", 178, 235 },
-  { "B753", "753", "Boeing", "757-300", 243, 295 },
-  { "B762", "762", "Boeing", "767-200", 181, 255 },
-  { "B763", "763", "Boeing", "767-300", 218, 269 },
-  { "B764", "764", "Boeing", "767-400ER", 245, 304 },
-  { "B772", "772", "Boeing", "777-200", 314, 396 },
-  { "B77L", "77L", "Boeing", "777-200LR", 317, 317 },
-  { "B77L", "77X", "Boeing", "777-200 Freighter", 0, 0 },
-  { "B773", "773", "Boeing", "777-300", 368, 451 },
-  { "B77W", "77W", "Boeing", "777-300ER", 365, 451 },
-  { "B778", "778", "Boeing", "777-8", 300, 384 },
-  { "B779", "779", "Boeing", "777-9", 350, 426 },
-  { "B788", "788", "Boeing", "787-8", 242, 248 },
-  { "B789", "789", "Boeing", "787-9", 290, 296 },
-  { "B78X", "78X", "Boeing", "787-10", 318, 330 },
+  { "B701", "701", "Boeing", "707-120", 179 },
+  { "B703", "703", "Boeing", "707-320", 189 },
+  { "B720", "720", "Boeing", "720", 149 },
+  { "B721", "721", "Boeing", "727-100", 131 },
+  { "B722", "722", "Boeing", "727-200", 189 },
+  { "B741", "741", "Boeing", "747-100", 452 },
+  { "B742", "742", "Boeing", "747-200", 452 },
+  { "B743", "743", "Boeing", "747-300", 496 },
+  { "B744", "744", "Boeing", "747-400", 524 },
+  { "B741F", "",   "Boeing", "747-100F (pax eq.)", 0 },
+  { "BLCF", "",    "Boeing", "747 LCF Dreamlifter", 8 },
+  { "B748", "748", "Boeing", "747-8", 467 },
+  { "B748", "74H", "Boeing", "747-8I", 467 },
+  { "B748", "74N", "Boeing", "747-8F", 0 },
+  { "B74R", "74R", "Boeing", "747SR", 550 },
+  { "B74R", "74V", "Boeing", "747SR Freighter", 0 },
+  { "B74S", "74L", "Boeing", "747SP", 313 },
+  { "B752", "752", "Boeing", "757-200", 235 },
+  { "B753", "753", "Boeing", "757-300", 295 },
+  { "B762", "762", "Boeing", "767-200", 255 },
+  { "B763", "763", "Boeing", "767-300", 269 },
+  { "B764", "764", "Boeing", "767-400ER", 304 },
+  { "B772", "772", "Boeing", "777-200", 396 },
+  { "B77L", "77L", "Boeing", "777-200LR", 317 },
+  { "B77L", "77X", "Boeing", "777-200 Freighter", 0 },
+  { "B773", "773", "Boeing", "777-300", 451 },
+  { "B77W", "77W", "Boeing", "777-300ER", 451 },
+  { "B778", "778", "Boeing", "777-8", 384 },
+  { "B779", "779", "Boeing", "777-9", 426 },
+  { "B788", "788", "Boeing", "787-8", 248 },
+  { "B789", "789", "Boeing", "787-9", 296 },
+  { "B78X", "78X", "Boeing", "787-10", 330 },
 
   // McDonnell Douglas / Douglas
-  { "DC10", "D11", "Douglas", "DC-10-10/-15 Passenger", 250, 380 },
-  { "DC10", "D1C", "Douglas", "DC-10-30/-40 Passenger", 250, 380 },
-  { "DC10", "D1M", "Douglas", "DC-10-30 Combi", 250, 380 },
-  { "DC10", "D1X", "Douglas", "DC-10-10 Freighter", 0, 0 },
-  { "DC10", "D1Y", "Douglas", "DC-10-30/-40 Freighter", 0, 0 },
-  { "DC85", "D8T", "Douglas", "DC-8-50", 125, 189 },
-  { "DC86", "D8L", "Douglas", "DC-8-62", 159, 189 },
-  { "DC87", "D8Q", "Douglas", "DC-8-72", 159, 189 },
-  { "DC91", "D91", "Douglas", "DC-9-10", 90, 109 },
-  { "DC92", "D92", "Douglas", "DC-9-20", 90, 125 },
-  { "DC93", "D93", "Douglas", "DC-9-30", 125, 135 },
-  { "DC94", "D94", "Douglas", "DC-9-40", 125, 135 },
-  { "DC95", "D95", "Douglas", "DC-9-50", 125, 139 },
-  { "MD11", "M11", "McDonnell Douglas", "MD-11", 285, 410 },
-  { "MD11", "M1F", "McDonnell Douglas", "MD-11F", 0, 0 },
-  { "MD11", "M1M", "McDonnell Douglas", "MD-11C", 0, 0 },
-  { "MD81", "M81", "McDonnell Douglas", "MD-81", 135, 155 },
-  { "MD82", "M82", "McDonnell Douglas", "MD-82", 135, 165 },
-  { "MD83", "M83", "McDonnell Douglas", "MD-83", 135, 165 },
-  { "MD87", "M87", "McDonnell Douglas", "MD-87", 114, 130 },
-  { "MD88", "M88", "McDonnell Douglas", "MD-88", 135, 165 },
-  { "MD90", "M90", "McDonnell Douglas", "MD-90", 153, 172 },
+  { "DC10", "D11", "Douglas", "DC-10-10/-15 Passenger", 380 },
+  { "DC10", "D1C", "Douglas", "DC-10-30/-40 Passenger", 380 },
+  { "DC10", "D1M", "Douglas", "DC-10-30 Combi", 380 },
+  { "DC10", "D1X", "Douglas", "DC-10-10 Freighter", 0 },
+  { "DC10", "D1Y", "Douglas", "DC-10-30/-40 Freighter", 0 },
+  { "DC85", "D8T", "Douglas", "DC-8-50", 189 },
+  { "DC86", "D8L", "Douglas", "DC-8-62", 189 },
+  { "DC87", "D8Q", "Douglas", "DC-8-72", 189 },
+  { "DC91", "D91", "Douglas", "DC-9-10", 109 },
+  { "DC92", "D92", "Douglas", "DC-9-20", 125 },
+  { "DC93", "D93", "Douglas", "DC-9-30", 135 },
+  { "DC94", "D94", "Douglas", "DC-9-40", 135 },
+  { "DC95", "D95", "Douglas", "DC-9-50", 139 },
+  { "MD11", "M11", "McDonnell Douglas", "MD-11", 410 },
+  { "MD11", "M1F", "McDonnell Douglas", "MD-11F", 0 },
+  { "MD11", "M1M", "McDonnell Douglas", "MD-11C", 0 },
+  { "MD81", "M81", "McDonnell Douglas", "MD-81", 155 },
+  { "MD82", "M82", "McDonnell Douglas", "MD-82", 165 },
+  { "MD83", "M83", "McDonnell Douglas", "MD-83", 165 },
+  { "MD87", "M87", "McDonnell Douglas", "MD-87", 130 },
+  { "MD88", "M88", "McDonnell Douglas", "MD-88", 165 },
+  { "MD90", "M90", "McDonnell Douglas", "MD-90", 172 },
 
   // Embraer E-Jets & E2
-  { "E170", "E70", "Embraer", "E170", 66, 78 },
-  { "E175", "E75", "Embraer", "E175", 76, 88 },
-  { "E75L", "E75", "Embraer", "E175 (long wing)", 76, 88 },
-  { "E75S", "E75", "Embraer", "E175 (short wing)", 70, 88 },
-  { "E190", "E90", "Embraer", "E190", 97, 114 },
-  { "E195", "E95", "Embraer", "E195", 108, 132 },
-  { "E290", "", "Embraer", "E190-E2", 97, 120 },
-  { "E295", "", "Embraer", "E195-E2", 120, 146 },
+  { "E170", "E70", "Embraer", "E170", 78 },
+  { "E175", "E75", "Embraer", "E175", 88 },
+  { "E75L", "E75", "Embraer", "E175 (long wing)", 88 },
+  { "E75S", "E75", "Embraer", "E175 (short wing)", 88 },
+  { "E190", "E90", "Embraer", "E190", 114 },
+  { "E195", "E95", "Embraer", "E195", 132 },
+  { "E290", "", "Embraer", "E190-E2", 120 },
+  { "E295", "", "Embraer", "E195-E2", 146 },
 
   // Canadair / Bombardier CRJ & Q400
-  { "CRJ1", "CR1", "Bombardier", "CRJ100", 50, 50 },
-  { "CRJ2", "CR2", "Bombardier", "CRJ200", 50, 50 },
-  { "CRJ7", "CR7", "Bombardier", "CRJ700", 66, 78 },
-  { "CRJ9", "CR9", "Bombardier", "CRJ900", 76, 90 },
-  { "CRJX", "CRK", "Bombardier", "CRJ1000", 97, 104 },
-  { "DH8D", "DH4", "De Havilland Canada", "Dash 8 Q400", 68, 90 },
-  { "DH8A", "DH1", "De Havilland Canada", "Dash 8-100", 37, 39 },
-  { "DH8B", "DH2", "De Havilland Canada", "Dash 8-200", 39, 40 },
-  { "DH8C", "DH3", "De Havilland Canada", "Dash 8-300", 50, 56 },
-  { "DHC5", "DHC", "De Havilland Canada", "DHC-5 Buffalo", 0, 0 },
-  { "DHC7", "DH7", "De Havilland Canada", "DHC-7 Dash 7", 40, 54 },
+  { "CRJ1", "CR1", "Bombardier", "CRJ100", 50 },
+  { "CRJ2", "CR2", "Bombardier", "CRJ200", 50 },
+  { "CRJ7", "CR7", "Bombardier", "CRJ700", 78 },
+  { "CRJ9", "CR9", "Bombardier", "CRJ900", 90 },
+  { "CRJX", "CRK", "Bombardier", "CRJ1000", 104 },
+  { "DH8D", "DH4", "De Havilland Canada", "Dash 8 Q400", 90 },
+  { "DH8A", "DH1", "De Havilland Canada", "Dash 8-100", 39 },
+  { "DH8B", "DH2", "De Havilland Canada", "Dash 8-200", 40 },
+  { "DH8C", "DH3", "De Havilland Canada", "Dash 8-300", 56 },
+  { "DHC5", "DHC", "De Havilland Canada", "DHC-5 Buffalo", 0 },
+  { "DHC7", "DH7", "De Havilland Canada", "DHC-7 Dash 7", 54 },
 
   // ATR
-  { "AT43", "AT4", "ATR", "ATR 42-300/320", 44, 50 },
-  { "AT45", "AT5", "ATR", "ATR 42-500", 46, 50 },
-  { "AT46", "ATR", "ATR", "ATR 42-600", 46, 50 },
-  { "AT72", "AT7", "ATR", "ATR 72", 68, 78 },
-  { "AT73", "ATR", "ATR", "ATR 72-211/212", 68, 74 },
-  { "AT75", "ATR", "ATR", "ATR 72-500", 68, 74 },
-  { "AT76", "ATR", "ATR", "ATR 72-600", 70, 78 },
+  { "AT43", "AT4", "ATR", "ATR 42-300/320", 50 },
+  { "AT45", "AT5", "ATR", "ATR 42-500", 50 },
+  { "AT46", "ATR", "ATR", "ATR 42-600", 50 },
+  { "AT72", "AT7", "ATR", "ATR 72", 78 },
+  { "AT73", "ATR", "ATR", "ATR 72-211/212", 74 },
+  { "AT75", "ATR", "ATR", "ATR 72-500", 74 },
+  { "AT76", "ATR", "ATR", "ATR 72-600", 78 },
 
   // Commuters / Turboprops
-  { "SF34", "SF3", "Saab", "340B", 33, 36 },
-  { "SB20", "S20", "Saab", "2000", 50, 58 },
-  { "ATP",  "ATP", "BAe", "ATP", 64, 72 },
-  { "BE20", "", "Beechcraft", "Super King Air 200", 7, 13 },
-  { "BE30", "", "Beechcraft", "Super King Air 300/350", 8, 11 },
-  { "B190", "", "Beechcraft", "1900/1900D", 19, 19 },
-  { "AC90", "ACT", "Aero Commander", "Turbo Commander 690", 7, 11 },
-  { "D228", "", "Dornier", "Do 228", 18, 19 },
-  { "D328", "", "Dornier", "Do 328-100", 30, 33 },
-  { "J328", "", "Fairchild Dornier", "328JET", 30, 33 },
-  { "JS31", "", "British Aerospace", "Jetstream 31", 18, 19 },
-  { "JS32", "", "British Aerospace", "Jetstream 32", 19, 19 },
-  { "JS41", "", "British Aerospace", "Jetstream 41", 29, 30 },
-  { "F50", "", "Fokker", "50", 46, 62 },
-  { "F70", "F70", "Fokker", "70", 72, 85 },
-  { "F100", "100", "Fokker", "100", 97, 109 },
-  { "F27",  "F27", "Fokker", "F27 Friendship", 40, 56 },
-  { "F28",  "F21", "Fokker", "F28 Fellowship", 65, 85 },
-  { "YS11", "", "NAMC", "YS-11", 60, 64 },
-  { "A748", "HS7", "Hawker Siddeley", "HS 748", 48, 60 },
-  { "BA11", "", "British Aerospace", "BAe 146-100", 70, 82 },
-  { "BA12", "", "British Aerospace", "BAe 146-200", 85, 100 },
-  { "BA13", "", "British Aerospace", "BAe 146-300", 100, 116 },
-  { "B461", "141", "British Aerospace", "BAe 146-100", 70, 82 },
-  { "B462", "142", "British Aerospace", "BAe 146-200", 85, 100 },
-  { "B463", "143", "British Aerospace", "BAe 146-300", 100, 116 },
-  { "RJ70", "AR7", "Avro", "RJ70", 70, 82 },
-  { "RJ85", "AR8", "Avro", "RJ85", 85, 100 },
-  { "RJ1H", "AR1", "Avro", "RJ100", 100, 116 },
+  { "SF34", "SF3", "Saab", "340B", 36 },
+  { "SB20", "S20", "Saab", "2000", 58 },
+  { "ATP",  "ATP", "BAe", "ATP", 72 },
+  { "BE20", "", "Beechcraft", "Super King Air 200", 13 },
+  { "BE30", "", "Beechcraft", "Super King Air 300/350", 11 },
+  { "B190", "", "Beechcraft", "1900/1900D", 19 },
+  { "AC90", "ACT", "Aero Commander", "Turbo Commander 690", 11 },
+  { "D228", "", "Dornier", "Do 228", 19 },
+  { "D328", "", "Dornier", "Do 328-100", 33 },
+  { "J328", "", "Fairchild Dornier", "328JET", 33 },
+  { "JS31", "", "British Aerospace", "Jetstream 31", 19 },
+  { "JS32", "", "British Aerospace", "Jetstream 32", 19 },
+  { "JS41", "", "British Aerospace", "Jetstream 41", 30 },
+  { "F50", "", "Fokker", "50", 62 },
+  { "F70", "F70", "Fokker", "70", 85 },
+  { "F100", "100", "Fokker", "100", 109 },
+  { "F27",  "F27", "Fokker", "F27 Friendship", 56 },
+  { "F28",  "F21", "Fokker", "F28 Fellowship", 85 },
+  { "YS11", "", "NAMC", "YS-11", 64 },
+  { "A748", "HS7", "Hawker Siddeley", "HS 748", 60 },
+  { "BA11", "", "British Aerospace", "BAe 146-100", 82 },
+  { "BA12", "", "British Aerospace", "BAe 146-200", 100 },
+  { "BA13", "", "British Aerospace", "BAe 146-300", 116 },
+  { "B461", "141", "British Aerospace", "BAe 146-100", 82 },
+  { "B462", "142", "British Aerospace", "BAe 146-200", 100 },
+  { "B463", "143", "British Aerospace", "BAe 146-300", 116 },
+  { "RJ70", "AR7", "Avro", "RJ70", 82 },
+  { "RJ85", "AR8", "Avro", "RJ85", 100 },
+  { "RJ1H", "AR1", "Avro", "RJ100", 116 },
 
   // Regional jets
-  { "ARJ1", "AR1", "Comac", "ARJ21-700", 78, 90 },
-  { "AJ27", "C27", "Comac", "ARJ21-700", 78, 90 },
-  { "SU95", "SU9", "Sukhoi", "Superjet 100", 87, 108 },
-  { "MRJ9", "M90", "Mitsubishi", "SpaceJet M90", 88, 92 },
-  { "C919", "",   "Comac", "C919", 158, 174 },
-  { "E135", "",   "Embraer", "ERJ 135", 37, 37 },
-  { "E140", "",   "Embraer", "ERJ 140", 44, 44 },
-  { "E145", "",   "Embraer", "ERJ 145", 45, 50 },
-  { "E45X", "",   "Embraer", "ERJ 145XR", 50, 50 },
+  { "ARJ1", "AR1", "Comac", "ARJ21-700", 90 },
+  { "AJ27", "C27", "Comac", "ARJ21-700", 90 },
+  { "SU95", "SU9", "Sukhoi", "Superjet 100", 108 },
+  { "MRJ9", "M90", "Mitsubishi", "SpaceJet M90", 92 },
+  { "C919", "",   "Comac", "C919", 174 },
+  { "E135", "",   "Embraer", "ERJ 135", 37 },
+  { "E140", "",   "Embraer", "ERJ 140", 44 },
+  { "E145", "",   "Embraer", "ERJ 145", 50 },
+  { "E45X", "",   "Embraer", "ERJ 145XR", 50 },
 
   // Bizjets (common)
-  { "C25A", "", "Cessna", "CJ2", 6, 8 },
-  { "C25B", "", "Cessna", "CJ3", 6, 8 },
-  { "C25C", "", "Cessna", "CJ4", 7, 9 },
-  { "C510", "", "Cessna", "Citation Mustang", 4, 5 },
-  { "C525", "", "Cessna", "CitationJet CJ1", 5, 6 },
-  { "C550", "", "Cessna", "Citation II/Bravo", 7, 9 },
-  { "C560", "", "Cessna", "Citation V/Ultra/Encore", 7, 9 },
-  { "C56X", "", "Cessna", "Citation Excel/XLS", 8, 9 },
-  { "E50P", "", "Embraer", "Phenom 100", 4, 6 },
-  { "E55P", "", "Embraer", "Phenom 300", 6, 9 },
-  { "E35L", "ER3", "Embraer", "Legacy 600/650", 13, 16 },
-  { "E545", "",  "Embraer", "Legacy 450 / Praetor 500", 9, 9 },
-  { "E550", "",  "Embraer", "Legacy 500 / Praetor 600", 12, 12 },
-  { "FA50", "", "Dassault", "Falcon 50", 9, 9 },
-  { "F2TH", "", "Dassault", "Falcon 2000", 8, 12 },
-  { "FA7X", "", "Dassault", "Falcon 7X", 12, 16 },
-  { "FA6X", "", "Dassault", "Falcon 6X", 12, 16 },
-  { "GLF2", "", "Gulfstream", "GII", 14, 19 },
-  { "GLF3", "", "Gulfstream", "GIII", 14, 19 },
-  { "GLF4", "", "Gulfstream", "GIV", 14, 19 },
-  { "GLF5", "", "Gulfstream", "GV", 14, 19 },
-  { "GLF6", "", "Gulfstream", "G650/G650ER", 14, 19 },
-  { "GA7C", "", "Gulfstream", "G700", 14, 19 },
-  { "GL7T", "", "Bombardier", "Global 7500", 14, 19 },
-  { "GL5T", "", "Bombardier", "Global 5000", 13, 17 },
-  { "GLEX", "", "Bombardier", "Global Express", 13, 17 },
-  { "CL30", "C30", "Bombardier", "Challenger 300", 8, 9 },
-  { "CL35", "C35", "Bombardier", "Challenger 350", 8, 10 },
-  { "CL60", "CRJ", "Bombardier", "Challenger 600", 9, 12 },
-  { "LR35", "", "Learjet", "35", 6, 8 },
-  { "LR45", "", "Learjet", "45", 8, 8 },
-  { "LR60", "", "Learjet", "60", 7, 8 },
-  { "PC24", "", "Pilatus", "PC-24", 6, 10 },
-  { "HDJT", "", "Honda Aircraft", "HondaJet HA-420", 4, 5 },
-  { "F2TP", "", "Dassault", "Falcon 2000S/LXS", 8, 12 },
+  { "C25A", "", "Cessna", "CJ2", 8 },
+  { "C25B", "", "Cessna", "CJ3", 8 },
+  { "C25C", "", "Cessna", "CJ4", 9 },
+  { "C510", "", "Cessna", "Citation Mustang", 5 },
+  { "C525", "", "Cessna", "CitationJet CJ1", 6 },
+  { "C550", "", "Cessna", "Citation II/Bravo", 9 },
+  { "C560", "", "Cessna", "Citation V/Ultra/Encore", 9 },
+  { "C56X", "", "Cessna", "Citation Excel/XLS", 9 },
+  { "E50P", "", "Embraer", "Phenom 100", 6 },
+  { "E55P", "", "Embraer", "Phenom 300", 9 },
+  { "E35L", "ER3", "Embraer", "Legacy 600/650", 16 },
+  { "E545", "",  "Embraer", "Legacy 450 / Praetor 500", 9 },
+  { "E550", "",  "Embraer", "Legacy 500 / Praetor 600", 12 },
+  { "FA50", "", "Dassault", "Falcon 50", 9 },
+  { "F2TH", "", "Dassault", "Falcon 2000", 12 },
+  { "FA7X", "", "Dassault", "Falcon 7X", 16 },
+  { "FA6X", "", "Dassault", "Falcon 6X", 16 },
+  { "GLF2", "", "Gulfstream", "GII", 19 },
+  { "GLF3", "", "Gulfstream", "GIII", 19 },
+  { "GLF4", "", "Gulfstream", "GIV", 19 },
+  { "GLF5", "", "Gulfstream", "GV", 19 },
+  { "GLF6", "", "Gulfstream", "G650/G650ER", 19 },
+  { "GA7C", "", "Gulfstream", "G700", 19 },
+  { "GL7T", "", "Bombardier", "Global 7500", 19 },
+  { "GL5T", "", "Bombardier", "Global 5000", 17 },
+  { "GLEX", "", "Bombardier", "Global Express", 17 },
+  { "CL30", "C30", "Bombardier", "Challenger 300", 9 },
+  { "CL35", "C35", "Bombardier", "Challenger 350", 10 },
+  { "CL60", "CRJ", "Bombardier", "Challenger 600", 12 },
+  { "LR35", "", "Learjet", "35", 8 },
+  { "LR45", "", "Learjet", "45", 8 },
+  { "LR60", "", "Learjet", "60", 8 },
+  { "PC24", "", "Pilatus", "PC-24", 10 },
+  { "HDJT", "", "Honda Aircraft", "HondaJet HA-420", 5 },
+  { "F2TP", "", "Dassault", "Falcon 2000S/LXS", 12 },
 
   // GA singles and twins (a sampling for sanity)
-  { "C150", "", "Cessna", "150", 2, 2 },
-  { "C152", "", "Cessna", "152", 2, 2 },
-  { "C172", "", "Cessna", "172", 4, 4 },
-  { "C182", "", "Cessna", "182", 4, 4 },
-  { "C206", "", "Cessna", "206", 6, 6 },
-  { "T206", "", "Cessna", "T206 Turbo Stationair", 6, 6 },
-  { "U206", "", "Cessna", "U206 Stationair", 6, 6 },
-  { "P206", "", "Cessna", "P206 Pressurized Stationair", 6, 6 },
-  { "C207", "", "Cessna", "207 Stationair 7", 7, 7 },
-  { "C208", "", "Cessna", "208 Caravan", 9, 12 },
-  { "C208A", "", "Cessna", "208 Caravan Amphibian", 9, 12 },
-  { "C408", "", "Cessna", "408 SkyCourier", 19, 19 },
-  { "C210", "", "Cessna", "210", 6, 6 },
-  { "C337", "", "Cessna", "337 Skymaster", 4, 6 },
-  { "C350", "", "Cessna", "350 Corvalis", 4, 4 },
-  { "C400", "", "Cessna", "400 Corvalis TT", 4, 4 },
-  { "BE58", "", "Beechcraft", "Baron 58", 6, 6 },
-  { "BE99", "", "Beechcraft", "Model 99 Airliner", 15, 17 },
-  { "PA31", "", "Piper", "Navajo/Chieftain", 6, 9 },
-  { "PA34", "", "Piper", "Seneca", 6, 6 },
-  { "PA44", "", "Piper", "Seminole", 4, 4 },
-  { "PA46", "", "Piper", "Malibu/Mirage/Meridian", 5, 6 },
-  { "M600", "", "Piper", "M600", 5, 6 },
-  { "P28A", "", "Piper", "PA-28 Archer", 4, 4 },
-  { "P28R", "", "Piper", "PA-28R Arrow", 4, 4 },
-  { "SR20", "", "Cirrus", "SR20", 4, 4 },
-  { "SR22", "", "Cirrus", "SR22", 4, 5 },
-  { "SF50", "", "Cirrus", "Vision Jet SF50", 5, 7 },
-  { "DA40", "", "Diamond", "DA40", 4, 4 },
-  { "DA42", "", "Diamond", "DA42 Twin Star", 4, 4 },
-  { "DA62", "", "Diamond", "DA62", 7, 7 },
-  { "M20P", "", "Mooney", "M20J", 4, 4 },
-  { "PC12", "", "Pilatus", "PC-12", 6, 9 },
-  { "P180", "P18", "Piaggio", "P.180 Avanti", 7, 9 },
-  { "KODI", "", "Quest", "Kodiak 100", 9, 10 },
-  { "EA50", "", "Eclipse", "Eclipse 500", 4, 5 },
-  { "PAY2", "", "Piper", "Cheyenne II", 6, 9 },
-  { "TBM7", "", "Daher", "TBM 700", 5, 6 },
-  { "TBM8", "", "Daher", "TBM 850", 5, 6 },
-  { "TBM9", "", "Daher", "TBM 900", 5, 6 },
+  { "C150", "", "Cessna", "150", 2 },
+  { "C152", "", "Cessna", "152", 2 },
+  { "C172", "", "Cessna", "172", 4 },
+  { "C182", "", "Cessna", "182", 4 },
+  { "C206", "", "Cessna", "206", 6 },
+  { "T206", "", "Cessna", "T206 Turbo Stationair", 6 },
+  { "U206", "", "Cessna", "U206 Stationair", 6 },
+  { "P206", "", "Cessna", "P206 Pressurized Stationair", 6 },
+  { "C207", "", "Cessna", "207 Stationair 7", 7 },
+  { "C208", "", "Cessna", "208 Caravan", 12 },
+  { "C208A", "", "Cessna", "208 Caravan Amphibian", 12 },
+  { "C408", "", "Cessna", "408 SkyCourier", 19 },
+  { "C210", "", "Cessna", "210", 6 },
+  { "C337", "", "Cessna", "337 Skymaster", 6 },
+  { "C350", "", "Cessna", "350 Corvalis", 4 },
+  { "C400", "", "Cessna", "400 Corvalis TT", 4 },
+  { "BE58", "", "Beechcraft", "Baron 58", 6 },
+  { "BE99", "", "Beechcraft", "Model 99 Airliner", 17 },
+  { "PA31", "", "Piper", "Navajo/Chieftain", 9 },
+  { "PA34", "", "Piper", "Seneca", 6 },
+  { "PA44", "", "Piper", "Seminole", 4 },
+  { "PA46", "", "Piper", "Malibu/Mirage/Meridian", 6 },
+  { "M600", "", "Piper", "M600", 6 },
+  { "P28A", "", "Piper", "PA-28 Archer", 4 },
+  { "P28R", "", "Piper", "PA-28R Arrow", 4 },
+  { "SR20", "", "Cirrus", "SR20", 4 },
+  { "SR22", "", "Cirrus", "SR22", 5 },
+  { "SF50", "", "Cirrus", "Vision Jet SF50", 7 },
+  { "DA40", "", "Diamond", "DA40", 4 },
+  { "DA42", "", "Diamond", "DA42 Twin Star", 4 },
+  { "DA62", "", "Diamond", "DA62", 7 },
+  { "M20P", "", "Mooney", "M20J", 4 },
+  { "PC12", "", "Pilatus", "PC-12", 9 },
+  { "P180", "P18", "Piaggio", "P.180 Avanti", 9 },
+  { "KODI", "", "Quest", "Kodiak 100", 10 },
+  { "EA50", "", "Eclipse", "Eclipse 500", 5 },
+  { "PAY2", "", "Piper", "Cheyenne II", 9 },
+  { "RV12", "", "Van's Aircraft", "RV-12", 2 },
+  { "TBM7", "", "Daher", "TBM 700", 6 },
+  { "TBM8", "", "Daher", "TBM 850", 6 },
+  { "TBM9", "", "Daher", "TBM 900", 6 },
 
   // Helicopters (common)
-  { "R22", "", "Robinson", "R22", 2, 2 },
-  { "R44", "", "Robinson", "R44", 4, 4 },
-  { "R66", "", "Robinson", "R66", 4, 5 },
-  { "B06", "", "Bell", "206", 4, 6 },
-  { "B407", "", "Bell", "407", 5, 6 },
-  { "B412", "", "Bell", "412", 13, 15 },
-  { "UH60", "", "Sikorsky", "UH-60 Black Hawk", 11, 14 },
-  { "CH47", "", "Boeing", "CH-47 Chinook", 33, 55 },
-  { "EC35", "", "Airbus Helicopters", "H135/EC135", 6, 7 },
-  { "EC55", "", "Airbus Helicopters", "H155/EC155", 10, 13 },
-  { "H160", "", "Airbus Helicopters", "H160", 10, 12 },
-  { "A139", "", "AgustaWestland", "AW139", 12, 15 },
-  { "A169", "", "AgustaWestland", "AW169", 8, 10 },
-  { "A189", "", "AgustaWestland", "AW189", 14, 19 },
-  { "S76", "", "Sikorsky", "S-76", 12, 13 },
-  { "S92", "", "Sikorsky", "S-92", 19, 19 },
-  { "MI8",  "", "Mil", "Mi-8/17 Hip", 24, 36 },
-  { "KA32", "", "Kamov", "Ka-32", 12, 16 },
-  { "K35R", "K35", "Boeing", "KC-135 Stratotanker", 0, 0 },
-  { "Y12",  "YN2", "Harbin", "Y-12", 17, 19 },
-  { "YK40", "YK4", "Yakovlev", "Yak-40", 27, 32 },
-  { "YK42", "YK2", "Yakovlev", "Yak-42", 100, 120 },
-  { "SC7",  "SHS", "Shorts", "SC-7 Skyvan", 19, 19 },
-  { "SH33", "SH3", "Shorts", "SD-330", 27, 36 },
-  { "SH36", "SH6", "Shorts", "SD-360", 36, 40 },
-  { "SW4",  "SW4", "Swearingen", "Metroliner", 19, 19 },
-  { "BELF", "SHB", "Shorts", "SC-5 Belfast", 35, 43 },
+  { "R22", "", "Robinson", "R22", 2 },
+  { "R44", "", "Robinson", "R44", 4 },
+  { "R66", "", "Robinson", "R66", 5 },
+  { "B06", "", "Bell", "206", 6 },
+  { "B407", "", "Bell", "407", 6 },
+  { "B412", "", "Bell", "412", 15 },
+  { "UH60", "", "Sikorsky", "UH-60 Black Hawk", 14 },
+  { "CH47", "", "Boeing", "CH-47 Chinook", 55 },
+  { "EC35", "", "Airbus Helicopters", "H135/EC135", 7 },
+  { "EC55", "", "Airbus Helicopters", "H155/EC155", 13 },
+  { "H160", "", "Airbus Helicopters", "H160", 12 },
+  { "A139", "", "AgustaWestland", "AW139", 15 },
+  { "A169", "", "AgustaWestland", "AW169", 10 },
+  { "A189", "", "AgustaWestland", "AW189", 19 },
+  { "S76", "", "Sikorsky", "S-76", 13 },
+  { "S92", "", "Sikorsky", "S-92", 19 },
+  { "MI8",  "", "Mil", "Mi-8/17 Hip", 36 },
+  { "KA32", "", "Kamov", "Ka-32", 16 },
+  { "K35R", "K35", "Boeing", "KC-135 Stratotanker", 0 },
+  { "Y12",  "YN2", "Harbin", "Y-12", 19 },
+  { "YK40", "YK4", "Yakovlev", "Yak-40", 32 },
+  { "YK42", "YK2", "Yakovlev", "Yak-42", 120 },
+  { "SC7",  "SHS", "Shorts", "SC-7 Skyvan", 19 },
+  { "SH33", "SH3", "Shorts", "SD-330", 36 },
+  { "SH36", "SH6", "Shorts", "SD-360", 40 },
+  { "SW4",  "SW4", "Swearingen", "Metroliner", 19 },
+  { "BELF", "SHB", "Shorts", "SC-5 Belfast", 43 },
 
   // Seaplanes and bush
-  { "DHC2", "", "de Havilland Canada", "DHC-2 Beaver", 6, 7 },
-  { "DHC3", "", "de Havilland Canada", "DHC-3 Otter", 10, 11 },
-  { "DHC6", "", "de Havilland Canada", "DHC-6 Twin Otter", 19, 19 },
-  { "LA8", "", "Lake Aircraft", "LA-8", 4, 6 },
-  { "AN2", "", "Antonov", "An-2", 12, 12 },
+  { "DHC2", "", "de Havilland Canada", "DHC-2 Beaver", 7 },
+  { "DH2T", "", "de Havilland Canada", "DHC-2T Turbo Beaver", 7 },
+  { "DHC3", "", "de Havilland Canada", "DHC-3 Otter", 11 },
+  { "DH3T", "", "de Havilland Canada", "DHC-3T Turbo Otter", 11 },
+  { "DHC6", "", "de Havilland Canada", "DHC-6 Twin Otter", 19 },
+  { "LA8", "", "Lake Aircraft", "LA-8", 6 },
+  { "AN2", "", "Antonov", "An-2", 12 },
 
   // Classic jets and transports
-  { "L101", "L10", "Lockheed", "L-1011 TriStar", 250, 400 },
-  { "L188", "LOE", "Lockheed", "L-188 Electra", 85, 98 },
-  { "L410", "L4T", "LET", "L-410", 15, 19 },
-  { "CVLT", "CV5", "Convair", "CV-580/600/640", 44, 60 },
+  { "L101", "L10", "Lockheed", "L-1011 TriStar", 400 },
+  { "L188", "LOE", "Lockheed", "L-188 Electra", 98 },
+  { "L410", "L4T", "LET", "L-410", 19 },
+  { "CVLT", "CV5", "Convair", "CV-580/600/640", 60 },
 
   // Military (subset; for detection and seat caps where relevant)
-  { "F16", "", "General Dynamics", "F-16 Fighting Falcon", 1, 2 },
-  { "F18", "", "McDonnell Douglas/Boeing", "F/A-18 Hornet", 1, 2 },
-  { "F22", "", "Lockheed Martin", "F-22 Raptor", 1, 1 },
-  { "F35", "", "Lockheed Martin", "F-35 Lightning II", 1, 2 },
-  { "B2", "", "Northrop Grumman", "B-2 Spirit", 2, 2 },
-  { "B52", "", "Boeing", "B-52 Stratofortress", 5, 8 },
-  { "C17", "", "Boeing", "C-17 Globemaster III", 3, 170 },
-  { "C5",  "", "Lockheed Martin", "C-5 Galaxy", 15, 345 },
-  { "C5M", "", "Lockheed Martin", "C-5M Super Galaxy", 15, 345 },
-  { "C130", "", "Lockheed Martin", "C-130 Hercules", 2, 92 },
-  { "C30J", "", "Lockheed Martin", "C-130J Hercules", 2, 92 },
-  { "KC10", "", "McDonnell Douglas", "KC-10 Extender", 75, 75 },
-  { "KC46", "", "Boeing", "KC-46 Pegasus", 65, 65 },
-  { "P8",   "", "Boeing", "P-8 Poseidon", 9, 11 },
-  { "E3TF", "", "Boeing", "E-3 Sentry AWACS", 13, 19 },
-  { "E7",   "", "Boeing", "E-7 Wedgetail", 12, 12 },
-  { "C27J", "", "Leonardo", "C-27J Spartan", 2, 60 },
-  { "CN35", "", "Airbus Military", "CN-235", 35, 45 },
-  { "C295", "", "Airbus Military", "C-295", 48, 71 },
-  { "T154", "T54", "Tupolev", "Tu-154", 164, 180 },
-  { "T134", "TU3", "Tupolev", "Tu-134", 72, 84 },
-  { "T204", "T20", "Tupolev", "Tu-204/214", 168, 210 },
-  { "IL18",  "IL8", "Ilyushin", "Il-18", 84, 120 },
-  { "IL62",  "IL6", "Ilyushin", "Il-62", 168, 192 },
-  { "IL76",  "IL7", "Ilyushin", "Il-76", 0, 0 },
-  { "IL86",  "ILW", "Ilyushin", "Il-86", 234, 350 },
-  { "IL96",  "I93", "Ilyushin", "Il-96", 262, 300 },
-  { "AN148", "",   "Antonov", "An-148", 68, 85 },
-  { "AN158", "",   "Antonov", "An-158", 97, 99 },
-  { "EUFI", "", "Eurofighter", "Typhoon", 1, 2 },
-  { "WW24", "WWP", "IAI", "1124 Westwind", 8, 10 },
+  { "F16", "", "General Dynamics", "F-16 Fighting Falcon", 2 },
+  { "F18", "", "McDonnell Douglas/Boeing", "F/A-18 Hornet", 2 },
+  { "F22", "", "Lockheed Martin", "F-22 Raptor", 1 },
+  { "F35", "", "Lockheed Martin", "F-35 Lightning II", 2 },
+  { "B2", "", "Northrop Grumman", "B-2 Spirit", 2 },
+  { "B52", "", "Boeing", "B-52 Stratofortress", 8 },
+  { "C17", "", "Boeing", "C-17 Globemaster III", 170 },
+  { "C5",  "", "Lockheed Martin", "C-5 Galaxy", 345 },
+  { "C5M", "", "Lockheed Martin", "C-5M Super Galaxy", 345 },
+  { "C130", "", "Lockheed Martin", "C-130 Hercules", 92 },
+  { "C30J", "", "Lockheed Martin", "C-130J Hercules", 92 },
+  { "KC10", "", "McDonnell Douglas", "KC-10 Extender", 75 },
+  { "KC46", "", "Boeing", "KC-46 Pegasus", 65 },
+  { "P8",   "", "Boeing", "P-8 Poseidon", 11 },
+  { "E3TF", "", "Boeing", "E-3 Sentry AWACS", 19 },
+  { "E7",   "", "Boeing", "E-7 Wedgetail", 12 },
+  { "C27J", "", "Leonardo", "C-27J Spartan", 60 },
+  { "CN35", "", "Airbus Military", "CN-235", 45 },
+  { "C295", "", "Airbus Military", "C-295", 71 },
+  { "T154", "T54", "Tupolev", "Tu-154", 180 },
+  { "T134", "TU3", "Tupolev", "Tu-134", 84 },
+  { "T204", "T20", "Tupolev", "Tu-204/214", 210 },
+  { "IL18",  "IL8", "Ilyushin", "Il-18", 120 },
+  { "IL62",  "IL6", "Ilyushin", "Il-62", 192 },
+  { "IL76",  "IL7", "Ilyushin", "Il-76", 0 },
+  { "IL86",  "ILW", "Ilyushin", "Il-86", 350 },
+  { "IL96",  "I93", "Ilyushin", "Il-96", 300 },
+  { "AN148", "",   "Antonov", "An-148", 85 },
+  { "AN158", "",   "Antonov", "An-158", 99 },
+  { "EUFI", "", "Eurofighter", "Typhoon", 2 },
+  { "WW24", "WWP", "IAI", "1124 Westwind", 10 },
 
   // --- Additions (curated for broader coverage; memory-conscious) ---
-  { "HDJT", "", "Honda Aircraft", "HondaJet HA-420", 4, 5 },
-  { "E55P", "", "Embraer", "Phenom 300", 6, 9 },
-  { "F2TP", "", "Dassault", "Falcon 2000S/LXS", 8, 12 },
-  { "EC35", "", "Airbus Helicopters", "H135/EC135", 6, 7 },
-  { "A139", "", "AgustaWestland", "AW139", 12, 15 },
-  { "A169", "", "AgustaWestland", "AW169", 8, 10 },
-  { "A189", "", "AgustaWestland", "AW189", 14, 19 },
-  { "EC55", "", "Airbus Helicopters", "H155/EC155", 10, 13 },
-  { "H160", "", "Airbus Helicopters", "H160", 10, 12 },
-  { "B190", "", "Beechcraft", "1900/1900D", 19, 19 },
-  { "JS31", "", "British Aerospace", "Jetstream 31", 18, 19 },
-  { "JS41", "", "British Aerospace", "Jetstream 41", 29, 30 },
-  { "D228", "", "Dornier", "Do 228", 18, 19 },
-  { "D328", "", "Dornier", "Do 328-100", 30, 33 },
-  { "J328", "", "Fairchild Dornier", "328JET", 30, 33 },
-  { "C208A", "", "Cessna", "208 Caravan Amphibian", 9, 12 },
-  { "DHC6", "", "de Havilland Canada", "DHC-6 Twin Otter", 19, 19 },
-  { "LA8", "", "Lake Aircraft", "LA-8", 4, 6 },
-  { "E290", "", "Embraer", "E190-E2", 97, 120 },
-  { "E295", "", "Embraer", "E195-E2", 120, 146 },
+  { "HDJT", "", "Honda Aircraft", "HondaJet HA-420", 5 },
+  { "E55P", "", "Embraer", "Phenom 300", 9 },
+  { "F2TP", "", "Dassault", "Falcon 2000S/LXS", 12 },
+  { "EC35", "", "Airbus Helicopters", "H135/EC135", 7 },
+  { "A139", "", "AgustaWestland", "AW139", 15 },
+  { "A169", "", "AgustaWestland", "AW169", 10 },
+  { "A189", "", "AgustaWestland", "AW189", 19 },
+  { "EC55", "", "Airbus Helicopters", "H155/EC155", 13 },
+  { "H160", "", "Airbus Helicopters", "H160", 12 },
+  { "B190", "", "Beechcraft", "1900/1900D", 19 },
+  { "JS31", "", "British Aerospace", "Jetstream 31", 19 },
+  { "JS41", "", "British Aerospace", "Jetstream 41", 30 },
+  { "D228", "", "Dornier", "Do 228", 19 },
+  { "D328", "", "Dornier", "Do 328-100", 33 },
+  { "J328", "", "Fairchild Dornier", "328JET", 33 },
+  { "C208A", "", "Cessna", "208 Caravan Amphibian", 12 },
+  { "DHC6", "", "de Havilland Canada", "DHC-6 Twin Otter", 19 },
+  { "LA8", "", "Lake Aircraft", "LA-8", 6 },
+  { "E290", "", "Embraer", "E190-E2", 120 },
+  { "E295", "", "Embraer", "E195-E2", 146 },
 };
 
 // Lightweight table: ICAO → preferred display name (used when memory tight)
@@ -403,6 +405,215 @@ struct AircraftTypeName {
 };
 
 static const AircraftTypeName kAircraftTypes[] = {
+  // Additions from enriched dataset (display names only)
+  { "A10",  "Fairchild A-10" },
+  { "A5",   "Icon A-5" },
+  { "AA1",  "Grumman American AA-1" },
+  { "AA5",  "Grumman American AA-5" },
+  { "AC11", "Rockwell Commander 112" },
+  { "AC50", "Aero Commander 500" },
+  { "AC56", "Aero Commander 560" },
+  { "AC68", "Aero Commander 680FP" },
+  { "AC6L", "Aero Commander 680FL" },
+  { "AC80", "Rockwell Turbo 680" },
+  { "AC95", "Jetprop Commander 1000" },
+  { "AEST", "Piper Aerostar" },
+  { "AR11", "Aeronca 11 Chief" },
+  { "ASTR", "IAI Astra 1125" },
+  { "AT3T", "Air Tractor AT-402" },
+  { "AT44", "ATR 42-400" },
+  { "AT5T", "Air Tractor AT-503" },
+  { "AT6T", "Air Tractor AT-602" },
+  { "AT8T", "Air Tractor AT-802" },
+  { "B18T", "Beech 18 (Turbo)" },
+  { "B350", "Beech Super King Air 350" },
+  { "B36T", "Turbine Bonanza 36" },
+  { "BE10", "Beech King Air 100" },
+  { "BE18", "Beech 18" },
+  { "BE19", "Beech B19 Musketeer" },
+  { "BE23", "Beech 23 Sundowner" },
+  { "BE24", "Beech 24 Sierra" },
+  { "BE33", "Beech Bonanza 33" },
+  { "BE35", "Beech Bonanza 35" },
+  { "BE36", "Beech Bonanza 36" },
+  { "BE40", "Beechjet 400/T-1 Jayhawk" },
+  { "BE50", "Beech 50 Twin Bonanza" },
+  { "BE55", "Beech Baron 55" },
+  { "BE60", "Beech 60 Duke" },
+  { "BE65", "Beech 65 Queen Air" },
+  { "BE70", "Beech 70 Queen Air" },
+  { "BE76", "Beech 76 Duchess" },
+  { "BE77", "Beech 77 Skipper" },
+  { "BE80", "Beech 80 Queen Air" },
+  { "BE95", "Beech 95 Travel Air" },
+  { "BE9L", "Beech King Air 90" },
+  { "BE9T", "Beech F90 King Air" },
+  { "BT36", "Beech 36 Bonanza" },
+  { "C120", "Cessna 120" },
+  { "C140", "Cessna 140" },
+  { "C160", "Transall C-160" },
+  { "C162", "Cessna 162 Skycatcher" },
+  { "C170", "Cessna 170" },
+  { "C175", "Cessna 175" },
+  { "C177", "Cessna 177 Cardinal" },
+  { "C180", "Cessna 180 Skywagon" },
+  { "C185", "Cessna 185 Skywagon" },
+  { "C188", "Cessna 188" },
+  { "C195", "Cessna 195" },
+  { "C210", "Cessna 210 Centurion" },
+  { "C212", "CASA 212 Aviocar" },
+  { "C240", "Cessna TTx T240" },
+  { "C303", "Cessna 303 Crusader" },
+  { "C310", "Cessna 310" },
+  { "C320", "Cessna 320 Skyknight" },
+  { "C335", "Cessna 335" },
+  { "C340", "Cessna 340" },
+  { "C402", "Cessna 401/402" },
+  { "C404", "Cessna 404 Titan" },
+  { "C414", "Cessna 414 Chancellor" },
+  { "C421", "Cessna 421 Golden Eagle" },
+  { "C425", "Cessna 425 Corsair" },
+  { "C441", "Cessna 441 Conquest" },
+  { "C500", "Cessna Citation I" },
+  { "C501", "Cessna Citation I/SP" },
+  { "C510", "Cessna Citation Mustang" },
+  { "C525", "Cessna CitationJet/CJ1" },
+  { "C526", "Cessna 526 CitationJet" },
+  { "C550", "Cessna Citation II/Bravo" },
+  { "C551", "Cessna Citation II/SP" },
+  { "C55B", "Cessna Citation Bravo" },
+  { "C560", "Cessna Citation V/Ultra/Encore" },
+  { "C56X", "Cessna Citation Excel/XLS" },
+  { "C650", "Cessna Citation III/VI/VII" },
+  { "C680", "Cessna Citation Sovereign" },
+  { "C68A", "Cessna Citation Latitude" },
+  { "C700", "Cessna Citation Longitude" },
+  { "C72R", "Cessna 172RG Cutlass RG" },
+  { "C750", "Cessna Citation X" },
+  { "C77R", "Cessna 177RG" },
+  { "C82R", "Cessna 182RG" },
+  { "CH7A", "Aeronca 7AC" },
+  { "CH7B", "Bellanca 7GCBC Citabria" },
+  { "CL41", "Canadair CT-114 Tutor" },
+  { "COL3", "Lancair LC-40 Columbia 300" },
+  { "COL4", "Lancair LC-41 Columbia 400" },
+  { "COUR", "Helio U-10 Super Courier" },
+  { "CRUZ", "CZAW SportCruiser" },
+  { "CVLP", "Convair CV-440 Metropolitan" },
+  { "DC3",  "Douglas DC-3" },
+  { "DC3S", "Douglas Super DC-3" },
+  { "DC3T", "Basler BT-67 Turbo 67" },
+  { "DC6",  "Douglas DC-6" },
+  { "DC87", "Douglas DC-8-70" },
+  { "DC91", "Douglas DC-9-10" },
+  { "DC93", "Douglas DC-9-30" },
+  { "DC95", "Douglas DC-9-50" },
+  { "DV20", "Diamond DA20 Katana" },
+  { "E110", "Embraer EMB-110 Bandeirante" },
+  { "E120", "Embraer EMB-120 Brasilia" },
+  { "E35L", "Embraer Legacy 600" },
+  { "E45X", "Embraer ERJ 145XR" },
+  { "E50P", "Embraer Phenom 100" },
+  { "E545", "Embraer Legacy 450" },
+  { "E550", "Embraer Legacy 500/Praetor 600" },
+  { "E75L", "Embraer 175 (long wing)" },
+  { "E75S", "Embraer 175 (short wing)" },
+  { "EA50", "Eclipse 500" },
+  { "ERCO", "ERCO Ercoupe 415" },
+  { "EVOT", "Lancair Evolution Turbine" },
+  { "F15",  "Boeing F-15 Eagle" },
+  { "F18H", "F/A-18 Hornet" },
+  { "F18S", "F/A-18E/F Super Hornet" },
+  { "F2TH", "Dassault Falcon 2000" },
+  { "F406", "Reims-Cessna F406 Caravan II" },
+  { "F900", "Dassault Falcon 900" },
+  { "FA10", "Dassault Falcon 10" },
+  { "FA20", "Dassault Falcon 20" },
+  { "FA8X", "Dassault Falcon 8X" },
+  { "FDCT", "Flight Design CT" },
+  { "G150", "Gulfstream G150" },
+  { "G164", "Grumman American G-164" },
+  { "G280", "Gulfstream G280" },
+  { "GA5C", "Gulfstream G500" },
+  { "GA6C", "Gulfstream G600" },
+  { "GA7",  "Gulfstream American GA-7" },
+  { "GALX", "IAI 1126 Galaxy/Gulfstream G200" },
+  { "GC1",  "Globe GC-1 Swift" },
+  { "H25A", "Hawker Siddeley HS-125 (early)" },
+  { "H25B", "BAe HS-125/Hawker 800" },
+  { "H25C", "BAe/Raytheon HS-125-1000" },
+  { "HA4T", "Hawker 4000" },
+  { "HAWK", "BAe T-45 Goshawk" },
+  { "HUSK", "Aviat Husky" },
+  { "J328", "Fairchild Dornier 328JET" },
+  { "JS32", "BAe Jetstream 32" },
+  { "KODI", "Quest Kodiak" },
+  { "L29B", "Lockheed JetStar 2/731" },
+  { "L5",   "Stinson L-5 Sentinel" },
+  { "L8",   "Luscombe 8" },
+  { "LA4",  "Lake LA-4" },
+  { "LJ23", "Learjet 23" },
+  { "LJ24", "Learjet 24" },
+  { "LJ25", "Learjet 25" },
+  { "LJ31", "Learjet 31" },
+  { "LJ40", "Learjet 40" },
+  { "LJ45", "Learjet 45" },
+  { "LJ55", "Learjet 55" },
+  { "LJ60", "Learjet 60" },
+  { "LJ70", "Learjet 70" },
+  { "LJ75", "Learjet 75" },
+  { "LNC4", "Lancair IV" },
+  { "LNP4", "Lancair PropJet IV" },
+  { "M5",   "Maule M-5" },
+  { "M20T", "Mooney M20K/M20M" },
+  { "MU30", "Mitsubishi Diamond/MU-300" },
+  { "NAVI", "North American Navion" },
+  { "P210", "Cessna P210" },
+  { "P28B", "Piper Turbo Dakota" },
+  { "P28T", "Piper PA-28T Arrow IV" },
+  { "P3",   "Lockheed P-3 Orion" },
+  { "P32R", "Piper PA-32R Lance/Saratoga" },
+  { "P32T", "Piper PA-32T Turbo Lance II" },
+  { "P46T", "Piper Malibu Meridian" },
+  { "P51",  "North American P-51 Mustang" },
+  { "P68",  "Vulcanair P68" },
+  { "P750", "Pacific Aerospace P-750 XSTOL" },
+  { "PA11", "Piper PA-11 Cub Special" },
+  { "PA12", "Piper PA-12 Super Cruiser" },
+  { "PA16", "Piper PA-16 Clipper" },
+  { "PA18", "Piper PA-18 Super Cub" },
+  { "PA20", "Piper PA-20 Pacer" },
+  { "PA22", "Piper PA-22 Tri-Pacer" },
+  { "PA23", "Piper PA-23 Apache" },
+  { "PA24", "Piper PA-24 Comanche" },
+  { "PA25", "Piper PA-25 Pawnee" },
+  { "PA27", "Piper PA-27 Aztec" },
+  { "PA30", "Piper PA-30 Twin Comanche" },
+  { "PA32", "Piper PA-32 Cherokee Six" },
+  { "PA36", "Piper PA-36 Pawnee Brave" },
+  { "PA38", "Piper PA-38 Tomahawk" },
+  { "PAT4", "Piper T-1040" },
+  { "PAY1", "Piper Cheyenne I" },
+  { "PAY3", "Piper PA-42-720 Cheyenne III" },
+  { "PAY4", "Piper Cheyenne 400LS" },
+  { "PRM1", "Raytheon Premier I" },
+  { "R721", "Boeing 727-100RE Super 27" },
+  { "R722", "Boeing 727-200RE Super 27" },
+  { "S108", "Stinson 108 Voyager" },
+  { "S22T", "Cirrus SR22 Turbo" },
+  { "SBR1", "Rockwell Sabre 40/60" },
+  { "SBR2", "Rockwell Sabre 75" },
+  { "SW3",  "Fairchild Swearingen SA-226" },
+  { "T210", "Cessna T210 Turbo Centurion" },
+  { "T28",  "North American T-28 Trojan" },
+  { "T34P", "Beech T-34/45 Mentor" },
+  { "T38",  "Northrop T-38 Talon" },
+  { "T6",   "North American T-6 Texan" },
+  { "TAYB", "Taylorcraft BC" },
+  { "TB20", "Socata TB-20 Trinidad" },
+  { "TEX2", "Raytheon T-6 Texan II" },
+  { "TOBA", "Socata TB-10 Tobago" },
+  { "V22",  "Bell-Boeing V-22 Osprey" },
   // Augmented: quick display names for common/added types
   { "A124", "Antonov An-124" },
   { "A225", "Antonov An-225" },
@@ -616,6 +827,8 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "DA62", "Diamond DA62" },
   { "M20P", "Mooney M20" },
   { "PC12", "Pilatus PC-12" },
+  { "DH3T", "DHC-3T Turbo Otter" },
+  { "RV12", "Vans RV-12" },
   { "KODI", "Quest Kodiak 100" },
   { "EA50", "Eclipse 500" },
   { "TBM7", "Daher TBM 700" },
@@ -636,6 +849,7 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "S76", "Sikorsky S-76" },
   { "S92", "Sikorsky S-92" },
   { "DHC2", "DHC-2 Beaver" },
+  { "DH2T", "DHC-2T Turbo Beaver" },
   { "DHC3", "DHC-3 Otter" },
   { "DHC6", "DHC-6 Twin Otter" },
   { "LA8", "Lake LA-8" },
@@ -670,112 +884,47 @@ inline const char* aircraftDisplayName(const char* icao) {
   return "Unknown";
 }
 
-// Return a conservative seat range (min,max). If unknown, return (1, 6) for GA-ish defaults.
-// You can tune the default if your app’s domain skews commercial vs GA.
-inline void aircraftSeatRange(const char* icao, uint16_t& outMin, uint16_t& outMax) {
-  outMin = 1;
-  outMax = 6;  // sensible GA default
-  if (!icao || !*icao) return;
-
-  // Direct match against rich table first.
+// Return only the max seat count. If unknown, returns false and leaves maxOut unchanged (caller may default).
+inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
+  if (!icao || !*icao) return false;
+  // Direct match against rich table first (max only)
   for (size_t i = 0; i < sizeof(kTypeInfo) / sizeof(kTypeInfo[0]); ++i) {
-    if (strcasecmp(icao, kTypeInfo[i].icao) == 0) {
-      outMin = kTypeInfo[i].minSeats;
-      outMax = kTypeInfo[i].maxSeats;
-      return;
-    }
+    if (strcasecmp(icao, kTypeInfo[i].icao) == 0) { maxOut = kTypeInfo[i].maxSeats; return true; }
   }
-
-  // Family heuristics (keep short & cheap):
-  // A32X
-  if (strncasecmp(icao, "A31", 3) == 0 || strncasecmp(icao, "A32", 3) == 0) {
-    outMin = 150;
-    outMax = 244;
-    return;
-  }
-  // B70X (707)
-  if (strncasecmp(icao, "B70", 3) == 0) {
-    outMin = 110;
-    outMax = 189;
-    return;
-  }
-  // B72X (727)
-  if (strncasecmp(icao, "B72", 3) == 0) {
-    outMin = 94;
-    outMax = 189;
-    return;
-  }
-  // B73X
-  if (strncasecmp(icao, "B73", 3) == 0) {
-    outMin = 108;
-    outMax = 230;
-    return;
-  }
-  // B78X
-  if (strncasecmp(icao, "B78", 3) == 0) {
-    outMin = 242;
-    outMax = 330;
-    return;
-  }
-  // E-Jets
-  if (strncasecmp(icao, "E17", 3) == 0 || strncasecmp(icao, "E19", 3) == 0 || strncasecmp(icao, "E29", 3) == 0 || strncasecmp(icao, "E75", 3) == 0) {
-    outMin = 66;
-    outMax = 146;
-    return;
-  }
-  // CRJ
-  if (strncasecmp(icao, "CRJ", 3) == 0) {
-    outMin = 50;
-    outMax = 104;
-    return;
-  }
-  // ATR
-  if (strncasecmp(icao, "AT4", 3) == 0 || strncasecmp(icao, "AT7", 3) == 0) {
-    outMin = 46;
-    outMax = 78;
-    return;
-  }
-  // Dash 8
-  if (strncasecmp(icao, "DH8", 3) == 0) {
-    outMin = 37;
-    outMax = 90;
-    return;
-  }
-  // BAe 146 family (BA11/12/13)
-  if (strncasecmp(icao, "BA1", 3) == 0) {
-    outMin = 70;
-    outMax = 116;
-    return;
-  }
-  // YS-11
-  if (strncasecmp(icao, "YS1", 3) == 0) {
-    outMin = 60;
-    outMax = 64;
-    return;
-  }
-  // C919
-  if (strncasecmp(icao, "C91", 3) == 0) {
-    outMin = 158;
-    outMax = 174;
-    return;
-  }
-  // GA Caravan
-  if (strcasecmp(icao, "C208") == 0 || strcasecmp(icao, "C208A") == 0) {
-    outMin = 9;
-    outMax = 12;
-    return;
-  }
-  // Helicopters (common)
-  if (strcasecmp(icao, "R44") == 0) {
-    outMin = 4;
-    outMax = 4;
-    return;
-  }
-  if (strcasecmp(icao, "A139") == 0) {
-    outMin = 12;
-    outMax = 15;
-    return;
-  }
+  // Family heuristics (max only)
+  if (strncasecmp(icao, "A31", 3) == 0 || strncasecmp(icao, "A32", 3) == 0) { maxOut = 244; return true; }
+  if (strncasecmp(icao, "B70", 3) == 0) { maxOut = 189; return true; } // 707
+  if (strncasecmp(icao, "B72", 3) == 0) { maxOut = 189; return true; } // 727
+  if (strncasecmp(icao, "B73", 3) == 0) { maxOut = 230; return true; } // 737
+  if (strncasecmp(icao, "B78", 3) == 0) { maxOut = 330; return true; } // 787
+  if (strncasecmp(icao, "E17", 3) == 0 || strncasecmp(icao, "E19", 3) == 0 || strncasecmp(icao, "E29", 3) == 0 || strncasecmp(icao, "E75", 3) == 0) { maxOut = 146; return true; }
+  if (strncasecmp(icao, "CRJ", 3) == 0) { maxOut = 104; return true; }
+  if (strncasecmp(icao, "AT4", 3) == 0 || strncasecmp(icao, "AT7", 3) == 0) { maxOut = 78; return true; }
+  if (strncasecmp(icao, "DH8", 3) == 0) { maxOut = 90; return true; }
+  if (strncasecmp(icao, "DH2", 3) == 0) { maxOut = 7; return true; }
+  if (strncasecmp(icao, "BA1", 3) == 0) { maxOut = 116; return true; } // BAe 146
+  if (strncasecmp(icao, "YS1", 3) == 0) { maxOut = 64; return true; }
+  if (strncasecmp(icao, "C91", 3) == 0) { maxOut = 174; return true; } // C919
+  if (strcasecmp(icao, "C208") == 0 || strcasecmp(icao, "C208A") == 0) { maxOut = 12; return true; }
+  if (strcasecmp(icao, "R44") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "A139") == 0) { maxOut = 15; return true; }
+  // GA broad defaults (optional)
+  if (strncasecmp(icao, "PA28", 4) == 0) { maxOut=4; return true; }
+  if (strncasecmp(icao, "PA31", 4) == 0) { maxOut=10; return true; }
+  if (strncasecmp(icao, "PA34", 4) == 0) { maxOut=6; return true; }
+  if (strncasecmp(icao, "PA44", 4) == 0) { maxOut=4; return true; }
+  if (strncasecmp(icao, "PA46", 4) == 0 || strncasecmp(icao, "P46T", 4) == 0) { maxOut=6; return true; }
+  if (strncasecmp(icao, "C15", 3) == 0) { maxOut=2; return true; }
+  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C18", 3) == 0) { maxOut=4; return true; }
+  if (strncasecmp(icao, "C19", 3) == 0) { maxOut=6; return true; }
+  if (strncasecmp(icao, "C20", 3) == 0 || strncasecmp(icao, "T20", 3) == 0 || strncasecmp(icao, "U20", 3) == 0 || strncasecmp(icao, "P20", 3) == 0) { maxOut=7; return true; }
+  if (strncasecmp(icao, "C40", 3) == 0 || strncasecmp(icao, "C35", 3) == 0) { maxOut=4; return true; }
+  if (strncasecmp(icao, "C41", 3) == 0 || strncasecmp(icao, "C42", 3) == 0) { maxOut=8; return true; }
+  if (strncasecmp(icao, "MU2", 3) == 0) { maxOut=10; return true; }
+  if (strncasecmp(icao, "M28", 3) == 0) { maxOut=19; return true; }
+  if (strncasecmp(icao, "C21", 3) == 0 || strncasecmp(icao, "CN3", 3) == 0 || strncasecmp(icao, "C29", 3) == 0) { maxOut=71; return true; }
+  if (strcasecmp(icao, "SF50") == 0) { maxOut=7; return true; }
+  return false;
 }
 
 // --- Arduino String shims (backward-compatible with existing .ino code) ---
@@ -788,51 +937,18 @@ inline String aircraftFriendlyName(const String& rawCode) {
   return String(name);
 }
 
-// Seat range from String code; returns true if a specific or heuristic match applied.
-inline bool aircraftSeatRange(const String& rawCode, uint16_t& minOut, uint16_t& maxOut) {
+// Upper-seat-only helpers
+inline bool aircraftSeatMax(const String& rawCode, uint16_t& maxOut) {
   if (rawCode.length() == 0) return false;
   String code = rawCode; code.trim(); code.toUpperCase();
-  // Exact in rich table
+  // Exact match against rich table by ICAO or IATA
   for (size_t i = 0; i < sizeof(kTypeInfo)/sizeof(kTypeInfo[0]); ++i) {
     if (code.equalsIgnoreCase(kTypeInfo[i].icao) || (kTypeInfo[i].iata && strlen(kTypeInfo[i].iata) && code.equalsIgnoreCase(kTypeInfo[i].iata))) {
-      minOut = kTypeInfo[i].minSeats; maxOut = kTypeInfo[i].maxSeats; return true;
+      maxOut = kTypeInfo[i].maxSeats; return true;
     }
   }
-  // Heuristics mirroring the C-string helper
-  auto pref = [&](const char* pfx){ return strncasecmp(code.c_str(), pfx, strlen(pfx)) == 0; };
-  auto eq   = [&](const char* s){ return strcasecmp(code.c_str(), s) == 0; };
-  if (pref("A31") || pref("A32")) { minOut=150; maxOut=244; return true; }
-  if (pref("B70")) { minOut=110; maxOut=189; return true; }
-  if (pref("B72")) { minOut=94;  maxOut=189; return true; }
-  if (pref("B73")) { minOut=108; maxOut=230; return true; }
-  if (pref("B78")) { minOut=242; maxOut=330; return true; }
-  if (pref("E17") || pref("E19") || pref("E29") || pref("E75")) { minOut=66; maxOut=146; return true; }
-  if (pref("CRJ")) { minOut=50; maxOut=104; return true; }
-  if (pref("AT4") || pref("AT7")) { minOut=46; maxOut=78; return true; }
-  if (pref("DH8")) { minOut=37; maxOut=90; return true; }
-  if (pref("BA1")) { minOut=70; maxOut=116; return true; }
-  if (pref("YS1")) { minOut=60; maxOut=64; return true; }
-  if (pref("C91")) { minOut=158; maxOut=174; return true; }
-  if (eq("C208") || eq("C208A")) { minOut=9; maxOut=12; return true; }
-  if (eq("R44")) { minOut=4; maxOut=4; return true; }
-  if (eq("A139")) { minOut=12; maxOut=15; return true; }
-  // GA broad defaults for families commonly encountered
-  if (pref("PA28")) { minOut=2; maxOut=4; return true; }
-  if (pref("PA31")) { minOut=6; maxOut=10; return true; }
-  if (pref("PA34")) { minOut=6; maxOut=6; return true; }
-  if (pref("PA44")) { minOut=4; maxOut=4; return true; }
-  if (pref("PA46") || pref("P46T")) { minOut=5; maxOut=6; return true; }
-  if (pref("C15")) { minOut=2; maxOut=2; return true; }
-  if (pref("C17") || pref("C18")) { minOut=4; maxOut=4; return true; }
-  if (pref("C19")) { minOut=4; maxOut=6; return true; }
-  if (pref("C20") || pref("T20") || pref("U20") || pref("P20")) { minOut=6; maxOut=7; return true; }
-  if (pref("C40") || pref("C35")) { minOut=4; maxOut=4; return true; }
-  if (pref("C41") || pref("C42")) { minOut=6; maxOut=8; return true; }
-  if (pref("MU2")) { minOut=6; maxOut=10; return true; }
-  if (pref("M28")) { minOut=19; maxOut=19; return true; }
-  if (pref("C21") || pref("CN3") || pref("C29")) { minOut=26; maxOut=71; return true; }
-  if (eq("SF50")) { minOut=5; maxOut=7; return true; }
-  return false;
+  // Heuristics (reuse char* helper)
+  return aircraftSeatMax(code.c_str(), maxOut);
 }
 
 // Compose display string "CODE FriendlyName" with graceful fallbacks
