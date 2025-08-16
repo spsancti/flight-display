@@ -221,8 +221,8 @@ static String classifyOp(const FlightInfo &fi) {
 
   // 2) Seat-based override: small aircraft (<= 15 seats) are PVT for this device.
   if (fi.typeCode.length()) {
-    uint16_t minSeats = 0, maxSeats = 0;
-    if (aircraftSeatRange(fi.typeCode, minSeats, maxSeats)) {
+    uint16_t maxSeats = 0;
+    if (aircraftSeatMax(fi.typeCode, maxSeats)) {
       if (maxSeats > 0 && maxSeats <= 15) {
         return String("PVT");
       }
@@ -601,7 +601,16 @@ static void renderFlight(const FlightInfo &fi) {
   if (!friendly.length() && fi.typeCode.length()) friendly = aircraftDisplayType(fi.typeCode);
   if (!friendly.length()) friendly = String("Unknown");
 
-  // Try fonts from largest to smaller until it fits
+  // Bottom metrics font (~50% larger than before)
+  const uint8_t* bottomFont = u8g2_font_9x18_tf; // was 6x12
+  u8g2.setFont(bottomFont);
+  int16_t bottomAscent = u8g2.getAscent();
+  int16_t bottomDescent = -u8g2.getDescent();
+  int16_t bottomH = bottomAscent + bottomDescent;
+  const int16_t gapTopBottom = 2; // minimal gap above bottom line
+  const int16_t topAvail = SCREEN_HEIGHT - bottomH - gapTopBottom;
+
+  // Title fonts from largest to smaller; allow wrapping to up to 2 lines
   const uint8_t* titleFonts[] = {
     u8g2_font_logisoso32_tf,
     u8g2_font_logisoso24_tf,
@@ -611,27 +620,75 @@ static void renderFlight(const FlightInfo &fi) {
     u8g2_font_6x12_tf
   };
   const size_t NFONTS = sizeof(titleFonts)/sizeof(titleFonts[0]);
+
+  String line1 = friendly;
+  String line2 = String("");
   const uint8_t* chosen = titleFonts[NFONTS - 1];
+  auto tryWrapTwoLines = [&](const String &s, String &o1, String &o2) -> bool {
+    // Attempt to split at spaces; choose split minimizing max line width and fitting within width
+    o1 = s; o2 = String("");
+    int bestIdx = -1; int bestWorst = INT_MAX;
+    for (int i = 1; i < (int)s.length() - 1; ++i) {
+      if (s[i] != ' ') continue;
+      String a = s.substring(0, i);
+      String b = s.substring(i + 1);
+      uint16_t wa = u8g2.getUTF8Width(a.c_str());
+      uint16_t wb = u8g2.getUTF8Width(b.c_str());
+      if (wa <= SCREEN_WIDTH && wb <= SCREEN_WIDTH) {
+        int worst = max((int)wa, (int)wb);
+        if (worst < bestWorst) { bestWorst = worst; bestIdx = i; o1 = a; o2 = b; }
+      }
+    }
+    return bestIdx >= 0;
+  };
+
   for (size_t i = 0; i < NFONTS; ++i) {
     u8g2.setFont(titleFonts[i]);
-    if (u8g2.getUTF8Width(friendly.c_str()) <= SCREEN_WIDTH) { chosen = titleFonts[i]; break; }
+    int16_t asc = u8g2.getAscent();
+    int16_t desc = -u8g2.getDescent();
+    int16_t lh = asc + desc;
+    // One-line fit within width and height
+    if (u8g2.getUTF8Width(friendly.c_str()) <= SCREEN_WIDTH && lh <= topAvail) {
+      chosen = titleFonts[i];
+      line1 = friendly; line2 = String("");
+      break;
+    }
+    // Try two-line wrap for this font if two lines fit height
+    if (2 * lh + 2 <= topAvail) {
+      String a, b;
+      if (tryWrapTwoLines(friendly, a, b)) {
+        chosen = titleFonts[i];
+        line1 = a; line2 = b;
+        break;
+      }
+    }
   }
+
+  // Draw title (one or two lines), vertically centered within topAvail
   u8g2.setFont(chosen);
-  int16_t baseTop = u8g2.getAscent();
-  drawCentered(friendly, baseTop);
+  int16_t ascT = u8g2.getAscent();
+  int16_t descT = -u8g2.getDescent();
+  int16_t lhT = ascT + descT;
+  int16_t totalTitleH = lhT + ((line2.length() > 0) ? (2 + lhT) : 0);
+  if (totalTitleH > topAvail) totalTitleH = topAvail; // safety
+  int16_t yStart = (topAvail - totalTitleH) / 2 + ascT;
+  drawCentered(line1, yStart);
+  if (line2.length() > 0) {
+    drawCentered(line2, yStart + lhT + 2);
+  }
 
   // 2) Bottom line: distance, seats, altitude (small font), evenly spaced across bottom
-  u8g2.setFont(u8g2_font_6x12_tf);
+  u8g2.setFont(bottomFont);
   int16_t descent = u8g2.getDescent();
   int16_t yBottom = SCREEN_HEIGHT - 1 - (descent < 0 ? -descent : descent);
 
   String distStr = String("n/a");
   if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + " km";
 
-  uint16_t minSeats = 0, maxSeats = 0;
+  uint16_t maxSeats = 0;
   String seatsStr = String("n/a");
   if (fi.seatOverride > 0) seatsStr = String(fi.seatOverride);
-  else if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
+  else if (fi.typeCode.length() && aircraftSeatMax(fi.typeCode, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
 
   String altStr = String("n/a");
   if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
