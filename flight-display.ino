@@ -1,16 +1,15 @@
 // ESP32 ADS-B Flight Display (Proof of Concept)
 // - Connects to Wi‑Fi
 // - Calls adsb.lol /v2/point/{lat}/{lon}/{radius}
-// - Parses nearest aircraft and renders summary on SSD1306 OLED
+// - Parses nearest aircraft and renders summary on SSD1322 OLED
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
+#include <SPI.h>
 #if defined(ESP32)
 #include <esp_system.h>
 #endif
@@ -86,11 +85,8 @@ static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool
 #define SCREEN_HEIGHT 64
 #endif
 
-#ifndef OLED_RESET_PIN
-#define OLED_RESET_PIN -1
-#endif
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET_PIN);
+// SPI OLED (SSD1322) via U8g2, full framebuffer, HW SPI
+U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, PIN_CS, PIN_DC, PIN_RST);
 static WebServer g_server(80);
 
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
@@ -251,24 +247,29 @@ static bool sameFlightDisplay(const FlightInfo &a, const FlightInfo &b) {
   return true;
 }
 
-static void drawCentered(const String &text, int16_t y, uint8_t size = 1) {
-  display.setTextSize(size);
-  int16_t x1, y1;
-  uint16_t w, h;
-  display.getTextBounds(text.c_str(), 0, 0, &x1, &y1, &w, &h);
+static void drawCentered(const String &text, int16_t baselineY) {
+  uint16_t w = u8g2.getUTF8Width(text.c_str());
   int16_t x = (SCREEN_WIDTH - (int)w) / 2;
   if (x < 0) x = 0;
-  display.setCursor(x, y);
-  display.print(text);
+  u8g2.drawUTF8(x, baselineY, text.c_str());
 }
 
 static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  drawCentered("Flight Display", 0, 1);
-  drawCentered(String(msgTop), 20, 1);
-  if (msgBottom) drawCentered(String(msgBottom), 35, 1);
-  display.display();
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  // Title font
+  u8g2.setFont(u8g2_font_10x20_tf);
+  int16_t base = u8g2.getAscent();
+  drawCentered("Flight Display", base);
+  // Messages
+  u8g2.setFont(u8g2_font_6x12_tf);
+  base = u8g2.getAscent() + 24; // place under title
+  drawCentered(String(msgTop), base);
+  if (msgBottom) {
+    base += 16;
+    drawCentered(String(msgBottom), base);
+  }
+  u8g2.sendBuffer();
 }
 
 static void connectWiFi() {
@@ -567,62 +568,63 @@ static void handleTestClosestPut() {
 }
 
 static void renderFlight(const FlightInfo &fi) {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
 
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("Closest Aircraft");
-
-  // Friendly aircraft type name on second line
-  display.setCursor(0, 12);
+  // 1) Top line: friendly aircraft name, as large as fits in one line
   String friendly = fi.typeCode.length() ? aircraftFriendlyName(fi.typeCode) : String("");
-  if (!friendly.length() && fi.typeCode.length()) {
-    // fallback to CODE Name
-    friendly = aircraftDisplayType(fi.typeCode);
-  }
+  if (!friendly.length() && fi.typeCode.length()) friendly = aircraftDisplayType(fi.typeCode);
   if (!friendly.length()) friendly = String("Unknown");
-  if (friendly.length() > 21) friendly.remove(21);
-  display.println(friendly);
 
-  // Third line: seats (override if provided)
-  display.setCursor(0, 22);
+  // Try fonts from largest to smaller until it fits
+  const uint8_t* titleFonts[] = {
+    u8g2_font_logisoso32_tf,
+    u8g2_font_logisoso24_tf,
+    u8g2_font_logisoso20_tf,
+    u8g2_font_10x20_tf,
+    u8g2_font_9x15_tf,
+    u8g2_font_6x12_tf
+  };
+  const size_t NFONTS = sizeof(titleFonts)/sizeof(titleFonts[0]);
+  const uint8_t* chosen = titleFonts[NFONTS - 1];
+  for (size_t i = 0; i < NFONTS; ++i) {
+    u8g2.setFont(titleFonts[i]);
+    if (u8g2.getUTF8Width(friendly.c_str()) <= SCREEN_WIDTH) { chosen = titleFonts[i]; break; }
+  }
+  u8g2.setFont(chosen);
+  int16_t baseTop = u8g2.getAscent();
+  drawCentered(friendly, baseTop);
+
+  // 2) Bottom line: distance, seats, altitude (small font), evenly spaced across bottom
+  u8g2.setFont(u8g2_font_6x12_tf);
+  int16_t descent = u8g2.getDescent();
+  int16_t yBottom = SCREEN_HEIGHT - 1 - (descent < 0 ? -descent : descent);
+
+  String distStr = String("n/a");
+  if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + " km";
+
   uint16_t minSeats = 0, maxSeats = 0;
-  if (fi.seatOverride > 0) {
-    display.print("Seats: ");
-    display.println(fi.seatOverride);
-  } else if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) {
-    display.print("Seats: ");
-    display.println(maxSeats);
-  } else {
-    display.println("Seats: n/a");
-  }
+  String seatsStr = String("n/a");
+  if (fi.seatOverride > 0) seatsStr = String(fi.seatOverride);
+  else if (fi.typeCode.length() && aircraftSeatRange(fi.typeCode, minSeats, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
 
-  // Fourth line: operator class (MIL/COM/PVT)
-  display.setCursor(0, 32);
-  display.print("Op: ");
-  if (fi.opClass.length()) display.println(fi.opClass);
-  else display.println("n/a");
+  String altStr = String("n/a");
+  if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
 
-  display.setCursor(0, 42);
-  display.print("Alt: ");
-  if (fi.altitudeFt >= 0) {
-    display.print(fi.altitudeFt);
-    display.print(" ft");
-  } else {
-    display.print("n/a");
-  }
+  const int cells = 3;
+  const int cellW = SCREEN_WIDTH / cells;
+  auto drawCenteredInCell = [&](int idx, const String &text){
+    uint16_t bw = u8g2.getUTF8Width(text.c_str());
+    int16_t cx = idx * cellW + (cellW - (int)bw) / 2;
+    if (cx < 0) cx = 0;
+    u8g2.drawUTF8(cx, yBottom, text.c_str());
+  };
 
-  display.setCursor(0, 52);
-  display.print("Dist: ");
-  if (!isnan(fi.distanceKm)) {
-    display.print(String(fi.distanceKm, 1));
-    display.print(" km");
-  } else {
-    display.print("n/a");
-  }
+  drawCenteredInCell(0, distStr);
+  drawCenteredInCell(1, seatsStr);
+  drawCenteredInCell(2, altStr);
 
-  display.display();
+  u8g2.sendBuffer();
 }
 
 void setup() {
@@ -698,13 +700,10 @@ void setup() {
   WiFi.setTxPower(WIFI_BOOT_TXPOWER);
   WiFi.setSleep(true);
   wifiInitialized = true;
-  // I2C + Display
-  Wire.begin(OLED_SDA, OLED_SCL);
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextWrap(false);
-  display.display();
+  // Display init (U8g2 handles SPI HW init for HW SPI constructor)
+  u8g2.begin();
+  u8g2.clearBuffer();
+  u8g2.sendBuffer();
 
   showSplash("Booting...");
   // Allow power rails to settle before enabling Wi‑Fi/TLS
