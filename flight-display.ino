@@ -596,10 +596,18 @@ static void renderFlight(const FlightInfo &fi) {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
 
-  // 1) Top line: friendly aircraft name, as large as fits in one line
+  // 1) Top line: friendly aircraft name, allow pseudo/unknown fallbacks
   String friendly = fi.typeCode.length() ? aircraftFriendlyName(fi.typeCode) : String("");
-  if (!friendly.length() && fi.typeCode.length()) friendly = aircraftDisplayType(fi.typeCode);
-  if (!friendly.length()) friendly = String("Unknown");
+  // Detect pseudo/non-aircraft types to avoid showing raw codes
+  bool isPseudo = false;
+  String codeUC = fi.typeCode; codeUC.trim(); codeUC.toUpperCase();
+  if (!friendly.length() && codeUC.length()) {
+    if (codeUC.startsWith("TISB")) { friendly = "TIS-B Target"; isPseudo = true; }
+    else if (codeUC.startsWith("ADSB")) { friendly = "ADS-B Target"; isPseudo = true; }
+    else if (codeUC.startsWith("MLAT")) { friendly = "MLAT Target"; isPseudo = true; }
+    else if (codeUC.startsWith("MODE")) { friendly = "Mode-S Target"; isPseudo = true; }
+  }
+  if (!friendly.length()) friendly = String("Unknown Aircraft");
 
   // Bottom metrics font (~50% larger than before)
   const uint8_t* bottomFont = u8g2_font_9x18_tf; // was 6x12
@@ -682,15 +690,17 @@ static void renderFlight(const FlightInfo &fi) {
   int16_t descent = u8g2.getDescent();
   int16_t yBottom = SCREEN_HEIGHT - 1 - (descent < 0 ? -descent : descent);
 
-  String distStr = String("n/a");
+  String distStr = String("—");
   if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + " km";
 
   uint16_t maxSeats = 0;
-  String seatsStr = String("n/a");
-  if (fi.seatOverride > 0) seatsStr = String(fi.seatOverride);
-  else if (fi.typeCode.length() && aircraftSeatMax(fi.typeCode, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
+  String seatsStr = String("—");
+  if (!isPseudo) {
+    if (fi.seatOverride > 0) seatsStr = String(fi.seatOverride);
+    else if (fi.typeCode.length() && aircraftSeatMax(fi.typeCode, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
+  }
 
-  String altStr = String("n/a");
+  String altStr = String("—");
   if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
 
   const int cells = 3;

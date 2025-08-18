@@ -155,6 +155,182 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "E195", "E95", "Embraer", "E195", 132 },
   { "E290", "", "Embraer", "E190-E2", 120 },
   { "E295", "", "Embraer", "E195-E2", 146 },
+  
+  // Additional GA, classic, bizjet, and utility types (from enriched set)
+  { "A10",  "", "Fairchild", "A-10", 0 },
+  { "A5",   "", "ICON", "A-5", 2 },
+  { "AA1",  "", "Grumman American", "AA-1", 2 },
+  { "AA5",  "", "Grumman American", "AA-5", 4 },
+  { "AC11", "", "Rockwell", "Commander 112", 4 },
+  { "AC50", "", "Aero Commander", "500", 6 },
+  { "AC56", "", "Aero Commander", "560", 6 },
+  { "AC68", "", "Aero Commander", "680FP", 8 },
+  { "AC6L", "", "Aero Commander", "680FL", 8 },
+  { "AC80", "", "Rockwell", "Turbo 680", 8 },
+  { "AC90", "ACT", "Gulfstream/Rockwell", "Turbo Commander 690", 11 },
+  { "AC95", "", "Gulfstream/Rockwell", "Jetprop Commander 1000", 11 },
+  { "AEST", "", "Piper", "Aerostar", 6 },
+  { "AR11", "", "Aeronca", "11 Chief", 2 },
+  { "ASTR", "", "IAI", "Astra 1125", 9 },
+  { "AT3T", "", "Air Tractor", "AT-402", 1 },
+  { "AT44", "", "ATR", "ATR 42-400", 50 },
+  { "AT5T", "", "Air Tractor", "AT-503", 1 },
+  { "AT6T", "", "Air Tractor", "AT-602", 1 },
+  { "AT8T", "", "Air Tractor", "AT-802", 2 },
+  { "B18T", "", "Beechcraft", "18 (Turbo)", 8 },
+  { "B350", "", "Beechcraft", "Super King Air 350", 11 },
+  { "B36T", "", "Beechcraft", "Turbine Bonanza 36", 4 },
+  { "BE10", "", "Beechcraft", "King Air 100", 9 },
+  { "BE18", "", "Beechcraft", "18", 8 },
+  { "BE19", "", "Beechcraft", "B19 Musketeer", 4 },
+  { "BE23", "", "Beechcraft", "23 Sundowner", 4 },
+  { "BE24", "", "Beechcraft", "24 Sierra", 4 },
+  { "BE33", "", "Beechcraft", "Bonanza 33", 4 },
+  { "BE35", "", "Beechcraft", "Bonanza 35", 4 },
+  { "BE36", "", "Beechcraft", "Bonanza 36", 4 },
+  { "BE40", "", "Raytheon/Beech", "Beechjet 400/T-1", 8 },
+  { "BE50", "", "Beechcraft", "50 Twin Bonanza", 5 },
+  { "BE55", "", "Beechcraft", "Baron 55", 6 },
+  { "BE60", "", "Beechcraft", "60 Duke", 6 },
+  { "BE65", "", "Beechcraft", "65 Queen Air", 9 },
+  { "BE70", "", "Beechcraft", "70 Queen Air", 8 },
+  { "BE76", "", "Beechcraft", "76 Duchess", 4 },
+  { "BE77", "", "Beechcraft", "77 Skipper", 2 },
+  { "BE80", "", "Beechcraft", "80 Queen Air", 8 },
+  { "BE95", "", "Beechcraft", "95 Travel Air", 4 },
+  { "BE9L", "", "Beechcraft", "King Air 90", 9 },
+  { "BE9T", "", "Beechcraft", "F90 King Air", 9 },
+  { "BT36", "", "Beechcraft", "36 Bonanza", 4 },
+  { "C120", "", "Cessna", "120", 2 },
+  { "C140", "", "Cessna", "140", 2 },
+  { "C160", "", "Transall", "C-160", 0 },
+  { "C162", "", "Cessna", "162 Skycatcher", 2 },
+  { "C170", "", "Cessna", "170", 4 },
+  { "C175", "", "Cessna", "175", 4 },
+  { "C177", "", "Cessna", "177 Cardinal", 4 },
+  { "C180", "", "Cessna", "180 Skywagon", 4 },
+  { "C185", "", "Cessna", "185 Skywagon", 6 },
+  { "C188", "", "Cessna", "188", 1 },
+  { "C195", "", "Cessna", "195", 5 },
+  { "C210", "", "Cessna", "210 Centurion", 6 },
+  { "C212", "", "CASA", "212 Aviocar", 26 },
+  { "C240", "", "Cessna", "TTx T240", 4 },
+  { "C303", "", "Cessna", "303 Crusader", 6 },
+  { "C310", "", "Cessna", "310", 6 },
+  { "C320", "", "Cessna", "320 Skyknight", 6 },
+  { "C335", "", "Cessna", "335", 6 },
+  { "C340", "", "Cessna", "340", 6 },
+  { "C402", "", "Cessna", "401/402", 10 },
+  { "C404", "", "Cessna", "404 Titan", 10 },
+  { "C414", "", "Cessna", "414 Chancellor", 8 },
+  { "C421", "", "Cessna", "421 Golden Eagle", 8 },
+  { "C425", "", "Cessna", "425 Corsair", 7 },
+  { "C441", "", "Cessna", "441 Conquest", 9 },
+  { "C500", "", "Cessna", "Citation I", 7 },
+  { "C501", "", "Cessna", "Citation I/SP", 7 },
+  { "C526", "", "Cessna", "526 CitationJet", 2 },
+  { "C551", "", "Cessna", "Citation II/SP", 9 },
+  { "C55B", "", "Cessna", "Citation Bravo", 9 },
+  { "C68A", "", "Cessna", "Citation Latitude", 12 },
+  { "C72R", "", "Cessna", "172RG Cutlass RG", 4 },
+  { "C77R", "", "Cessna", "177RG", 4 },
+  { "C82R", "", "Cessna", "182RG", 4 },
+  { "CH7A", "", "Aeronca", "7AC", 2 },
+  { "CH7B", "", "Bellanca", "7GCBC Citabria", 2 },
+  { "CL41", "", "Canadair", "CT-114 Tutor", 1 },
+  { "COL3", "", "Lancair", "LC-40 Columbia 300", 4 },
+  { "COL4", "", "Lancair", "LC-41 Columbia 400", 4 },
+  { "COUR", "", "Helio", "U-10 Super Courier", 6 },
+  { "CRUZ", "", "CZAW", "SportCruiser", 2 },
+  { "CVLP", "", "Convair", "CV-440 Metropolitan", 86 },
+  { "DC3S", "", "Douglas", "Super DC-3", 28 },
+  { "DV20", "", "Diamond", "DA20 Katana", 2 },
+  { "F406", "", "Reims/Cessna", "F406 Caravan II", 9 },
+  { "F900", "", "Dassault", "Falcon 900", 16 },
+  { "FA10", "", "Dassault", "Falcon 10", 8 },
+  { "FA20", "", "Dassault", "Falcon 20", 12 },
+  { "FA8X", "", "Dassault", "Falcon 8X", 19 },
+  { "FDCT", "", "Flight Design", "CT", 2 },
+  { "G150", "", "Gulfstream", "G150", 8 },
+  { "G164", "", "Grumman American", "G-164", 1 },
+  { "G280", "", "Gulfstream", "G280", 10 },
+  { "GA5C", "", "Gulfstream", "G500", 19 },
+  { "GA6C", "", "Gulfstream", "G600", 19 },
+  { "GA7",  "", "Gulfstream American", "GA-7", 6 },
+  { "GALX", "", "IAI/Gulfstream", "1126 Galaxy/G200", 10 },
+  { "GC1",  "", "Globe", "GC-1 Swift", 2 },
+  { "H25A", "", "Hawker Siddeley", "HS-125 (early)", 8 },
+  { "H25B", "", "BAe/Hawker", "HS-125/800", 8 },
+  { "H25C", "", "BAe/Raytheon", "HS-125-1000", 8 },
+  { "HA4T", "", "Hawker", "4000", 9 },
+  { "HAWK", "", "BAe", "T-45 Goshawk", 1 },
+  { "HUSK", "", "Aviat", "Husky", 2 },
+  { "JS32", "", "BAe", "Jetstream 32", 19 },
+  { "L29B", "", "Lockheed", "JetStar 2/731", 10 },
+  { "L5",   "", "Stinson", "L-5 Sentinel", 2 },
+  { "L8",   "", "Luscombe", "8", 2 },
+  { "LA4",  "", "Lake", "LA-4", 4 },
+  { "LJ23", "", "Learjet", "23", 6 },
+  { "LJ24", "", "Learjet", "24", 6 },
+  { "LJ25", "", "Learjet", "25", 8 },
+  { "LJ31", "", "Learjet", "31", 8 },
+  { "LJ40", "", "Learjet", "40", 7 },
+  { "LJ45", "", "Learjet", "45", 8 },
+  { "LJ55", "", "Learjet", "55", 10 },
+  { "LJ60", "", "Learjet", "60", 8 },
+  { "LJ70", "", "Learjet", "70", 9 },
+  { "LJ75", "", "Learjet", "75", 9 },
+  { "LNC4", "", "Lancair", "IV", 4 },
+  { "LNP4", "", "Lancair", "PropJet IV", 4 },
+  { "M5",   "", "Maule", "M-5", 4 },
+  { "M20T", "", "Mooney", "M20K/M20M", 4 },
+  { "MU30", "", "Mitsubishi", "MU-300 Diamond", 8 },
+  { "NAVI", "", "North American", "Navion", 4 },
+  { "P210", "", "Cessna", "P210", 4 },
+  { "P28B", "", "Piper", "Turbo Dakota", 4 },
+  { "P28T", "", "Piper", "PA-28T Arrow IV", 4 },
+  { "P3",   "", "Lockheed", "P-3 Orion", 11 },
+  { "P32R", "", "Piper", "PA-32R Lance/Saratoga", 6 },
+  { "P32T", "", "Piper", "PA-32T Turbo Lance II", 6 },
+  { "P46T", "", "Piper", "Malibu Meridian", 6 },
+  { "P51",  "", "North American", "P-51 Mustang", 1 },
+  { "P68",  "", "Vulcanair", "P68", 6 },
+  { "P750", "", "Pacific Aerospace", "P-750 XSTOL", 10 },
+  { "PA11", "", "Piper", "PA-11 Cub Special", 2 },
+  { "PA12", "", "Piper", "PA-12 Super Cruiser", 3 },
+  { "PA16", "", "Piper", "PA-16 Clipper", 4 },
+  { "PA18", "", "Piper", "PA-18 Super Cub", 2 },
+  { "PA20", "", "Piper", "PA-20 Pacer", 4 },
+  { "PA22", "", "Piper", "PA-22 Tri-Pacer", 4 },
+  { "PA23", "", "Piper", "PA-23 Apache", 6 },
+  { "PA24", "", "Piper", "PA-24 Comanche", 4 },
+  { "PA27", "", "Piper", "PA-27 Aztec", 6 },
+  { "PA30", "", "Piper", "PA-30 Twin Comanche", 4 },
+  { "PA32", "", "Piper", "PA-32 Cherokee Six", 6 },
+  { "PA36", "", "Piper", "PA-36 Pawnee Brave", 1 },
+  { "PA38", "", "Piper", "PA-38 Tomahawk", 2 },
+  { "PAT4", "", "Piper", "T-1040", 37 },
+  { "PAY1", "", "Piper", "Cheyenne I", 6 },
+  { "PAY3", "", "Piper", "PA-42-720 Cheyenne III", 9 },
+  { "PAY4", "", "Piper", "Cheyenne 400LS", 9 },
+  { "PRM1", "", "Raytheon", "Premier I", 6 },
+  { "R721", "", "Boeing", "727-100RE Super 27", 131 },
+  { "R722", "", "Boeing", "727-200RE Super 27", 189 },
+  { "S108", "", "Stinson", "108 Voyager", 4 },
+  { "S22T", "", "Cirrus", "SR22 Turbo", 4 },
+  { "SBR1", "", "Rockwell", "Sabre 40/60", 8 },
+  { "SBR2", "", "Rockwell", "Sabre 75", 8 },
+  { "SW3",  "", "Fairchild Swearingen", "SA-226", 11 },
+  { "T210", "", "Cessna", "T210 Turbo Centurion", 6 },
+  { "T28",  "", "North American", "T-28 Trojan", 2 },
+  { "T34P", "", "Beech", "T-34/45 Mentor", 2 },
+  { "T38",  "", "Northrop", "T-38 Talon", 2 },
+  { "T6",   "", "North American", "T-6 Texan", 2 },
+  { "TAYB", "", "Taylorcraft", "BC", 2 },
+  { "TB20", "", "Socata", "TB-20 Trinidad", 4 },
+  { "TEX2", "", "Raytheon", "Texan II", 2 },
+  { "TOBA", "", "Socata", "TB-10 Tobago", 4 },
+  { "V22",  "", "Bell-Boeing", "V-22 Osprey", 24 },
 
   // Canadair / Bombardier CRJ & Q400
   { "CRJ1", "CR1", "Bombardier", "CRJ100", 50 },
@@ -400,14 +576,13 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "E295", "", "Embraer", "E195-E2", 146 },
 };
 
-// Lightweight table: ICAO → preferred display name (used when memory tight)
+#if 0  // Lightweight table removed to reduce flash; using rich table only
 struct AircraftTypeName {
   const char* icao;
   const char* name;
 };
 
 static const AircraftTypeName kAircraftTypes[] = {
-  // Additions from enriched dataset (display names only)
   { "A10",  "Fairchild A-10" },
   { "A5",   "Icon A-5" },
   { "AA1",  "Grumman American AA-1" },
@@ -646,6 +821,7 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "IL76", "Ilyushin Il-76" },
   { "IL18", "Ilyushin Il-18" },
   { "TISB_OTHER", "TIS-B Other" },
+  { "ADSB_ICAO", "ADS-B ICAO Target" },
   { "GL5T", "Global 5000" },
   { "GLEX", "Global Express" },
   { "GA7C", "Gulfstream G700" },
@@ -867,18 +1043,13 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "C130", "C-130 Hercules" },
   { "EUFI", "Eurofighter Typhoon" },
 };
+#endif // OMIT kAircraftTypes
 
 // --- Lookup helpers ---
 
-// Find the preferred display name using the lightweight table first (fast & tiny),
-// and fall back to the richer info table if needed.
+// Find the preferred display name using the rich table; returns model or "Unknown".
 inline const char* aircraftDisplayName(const char* icao) {
   if (!icao || !*icao) return "Unknown";
-  for (size_t i = 0; i < sizeof(kAircraftTypes) / sizeof(kAircraftTypes[0]); ++i) {
-    if (strcasecmp(icao, kAircraftTypes[i].icao) == 0) {
-      return kAircraftTypes[i].name;
-    }
-  }
   for (size_t i = 0; i < sizeof(kTypeInfo) / sizeof(kTypeInfo[0]); ++i) {
     if (strcasecmp(icao, kTypeInfo[i].icao) == 0) {
       return kTypeInfo[i].model;
@@ -906,6 +1077,67 @@ inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
   if (strncasecmp(icao, "DH8", 3) == 0) { maxOut = 90; return true; }
   if (strncasecmp(icao, "DH2", 3) == 0) { maxOut = 7; return true; }
   if (strncasecmp(icao, "TISB", 4) == 0) { maxOut = 6; return true; }
+  // GA and bizjet heuristics
+  if (strncasecmp(icao, "BE33", 4) == 0 || strncasecmp(icao, "BE35", 4) == 0 || strncasecmp(icao, "BE36", 4) == 0) { maxOut = 4; return true; }
+  if (strncasecmp(icao, "BE55", 4) == 0 || strncasecmp(icao, "BE56", 4) == 0 || strncasecmp(icao, "BE58", 4) == 0) { maxOut = 6; return true; }
+  if (strncasecmp(icao, "BE76", 4) == 0 || strncasecmp(icao, "BE77", 4) == 0 || strncasecmp(icao, "BE80", 4) == 0 || strncasecmp(icao, "BE95", 4) == 0) { maxOut = 4; return true; }
+  if (strncasecmp(icao, "BE9", 3) == 0 || strncasecmp(icao, "BE10", 4) == 0) { maxOut = 9; return true; } // King Air 90/100
+  if (strcasecmp(icao, "B350") == 0) { maxOut = 11; return true; }
+  if (strncasecmp(icao, "LJ", 2) == 0) { maxOut = 9; return true; } // Learjet family approx
+  if (strcasecmp(icao, "PRM1") == 0) { maxOut = 6; return true; } // Premier I
+  if (strcasecmp(icao, "GALX") == 0) { maxOut = 10; return true; } // G200
+  if (strcasecmp(icao, "MU30") == 0) { maxOut = 8; return true; }
+  if (strcasecmp(icao, "H25A") == 0 || strcasecmp(icao, "H25B") == 0 || strcasecmp(icao, "H25C") == 0) { maxOut = 8; return true; }
+  if (strcasecmp(icao, "FA10") == 0) { maxOut = 8; return true; }
+  if (strcasecmp(icao, "FA20") == 0) { maxOut = 12; return true; }
+  if (strcasecmp(icao, "FA8X") == 0) { maxOut = 19; return true; }
+  // Cessna singles/twins
+  if (strcasecmp(icao, "C120") == 0 || strcasecmp(icao, "C140") == 0) { maxOut = 2; return true; }
+  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C15", 3) == 0 || strncasecmp(icao, "C19", 3) == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "C180") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "C185") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "C188") == 0) { maxOut = 1; return true; }
+  if (strcasecmp(icao, "C195") == 0) { maxOut = 5; return true; }
+  if (strcasecmp(icao, "C210") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "C310") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "C320") == 0 || strcasecmp(icao, "C335") == 0 || strcasecmp(icao, "C340") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "C402") == 0 || strcasecmp(icao, "C404") == 0) { maxOut = 10; return true; }
+  if (strcasecmp(icao, "C414") == 0 || strcasecmp(icao, "C421") == 0) { maxOut = 8; return true; }
+  if (strcasecmp(icao, "C425") == 0) { maxOut = 7; return true; }
+  if (strcasecmp(icao, "C441") == 0) { maxOut = 9; return true; }
+  // Piper singles/twins
+  if (strcasecmp(icao, "PA11") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "PA12") == 0) { maxOut = 3; return true; }
+  if (strcasecmp(icao, "PA16") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "PA18") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "PA20") == 0 || strcasecmp(icao, "PA22") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "PA23") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "PA24") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "PA25") == 0) { maxOut = 1; return true; }
+  if (strcasecmp(icao, "PA27") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "PA30") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "PA32") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "PA36") == 0) { maxOut = 1; return true; }
+  if (strcasecmp(icao, "PA38") == 0) { maxOut = 2; return true; }
+  // Light sport / experimental, classics
+  if (strcasecmp(icao, "FDCT") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "ERCO") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "CH7A") == 0 || strcasecmp(icao, "CH7B") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "CRUZ") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "LNC4") == 0 || strcasecmp(icao, "LNP4") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "EVOT") == 0) { maxOut = 4; return true; }
+  if (strcasecmp(icao, "G164") == 0) { maxOut = 1; return true; }
+  // Transports and classics
+  if (strcasecmp(icao, "DC3") == 0) { maxOut = 32; return true; }
+  if (strcasecmp(icao, "DC3T") == 0) { maxOut = 18; return true; }
+  if (strcasecmp(icao, "DC6") == 0) { maxOut = 100; return true; }
+  if (strcasecmp(icao, "CVLP") == 0) { maxOut = 86; return true; }
+  if (strcasecmp(icao, "JS32") == 0) { maxOut = 19; return true; }
+  if (strcasecmp(icao, "C212") == 0) { maxOut = 26; return true; }
+  if (strcasecmp(icao, "P750") == 0) { maxOut = 10; return true; }
+  if (strcasecmp(icao, "P68") == 0) { maxOut = 6; return true; }
+  if (strcasecmp(icao, "P3") == 0) { maxOut = 11; return true; }
+  if (strcasecmp(icao, "V22") == 0) { maxOut = 24; return true; }
   if (strncasecmp(icao, "BA1", 3) == 0) { maxOut = 116; return true; } // BAe 146
   if (strncasecmp(icao, "YS1", 3) == 0) { maxOut = 64; return true; }
   if (strncasecmp(icao, "C91", 3) == 0) { maxOut = 174; return true; } // C919
@@ -936,9 +1168,24 @@ inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
 inline String aircraftFriendlyName(const String& rawCode) {
   if (rawCode.length() == 0) return String("");
   String code = rawCode; code.trim(); code.toUpperCase();
-  const char* name = aircraftDisplayName(code.c_str());
-  if (!name || strcmp(name, "Unknown") == 0) return String("");
-  return String(name);
+  // Prefer rich table and compose Manufacturer + Model if available
+  for (size_t i = 0; i < sizeof(kTypeInfo)/sizeof(kTypeInfo[0]); ++i) {
+    bool match = false;
+    if (strcasecmp(code.c_str(), kTypeInfo[i].icao) == 0) match = true;
+    else if (kTypeInfo[i].iata && strlen(kTypeInfo[i].iata) && strcasecmp(code.c_str(), kTypeInfo[i].iata) == 0) match = true;
+    if (match) {
+      String manuf = String(kTypeInfo[i].manufacturer ? kTypeInfo[i].manufacturer : ""); manuf.trim();
+      String model = String(kTypeInfo[i].model ? kTypeInfo[i].model : ""); model.trim();
+      if (!manuf.length()) return model;
+      // Avoid duplication if model already starts with manufacturer
+      String modelLower = model; modelLower.toLowerCase();
+      String manufLower = manuf; manufLower.toLowerCase();
+      if (modelLower.startsWith(manufLower)) return model; // model includes manufacturer already
+      return manuf + String(" ") + model;
+    }
+  }
+  // No match
+  return String("");
 }
 
 // Upper-seat-only helpers
