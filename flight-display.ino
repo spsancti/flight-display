@@ -1,6 +1,6 @@
-// ESP32 ADS-B Flight Display (Proof of Concept)
+// ESP32 ADS-B Flight Display
 // - Connects to Wi‑Fi
-// - Calls adsb.lol /v2/point/{lat}/{lon}/{radius}
+// - Calls adsb.lol /v2/closest/{lat}/{lon}/{radius}
 // - Parses nearest aircraft and renders summary on SSD1322 OLED
 
 #include <Arduino.h>
@@ -17,22 +17,23 @@
 
 #include "config.h"  // Create from config.example.h and do not commit secrets
 #include "aircraft_types.h"
+#include "log.h"
 
 // Forward declaration to satisfy Arduino's auto-generated prototypes
 struct FlightInfo;
 
 // Relay module pins and logic (override in config.h if desired)
 #ifndef RELAY_IN1_PIN
-#define RELAY_IN1_PIN 25  // Power/Status (blink on boot, solid after first display)
+#define RELAY_IN1_PIN 33  // Power/Status (blink on boot, solid after first display)
 #endif
 #ifndef RELAY_IN2_PIN
-#define RELAY_IN2_PIN 26  // COM
+#define RELAY_IN2_PIN 25  // COM
 #endif
 #ifndef RELAY_IN3_PIN
-#define RELAY_IN3_PIN 27  // PVT
+#define RELAY_IN3_PIN 26  // PVT
 #endif
 #ifndef RELAY_IN4_PIN
-#define RELAY_IN4_PIN 33  // MIL
+#define RELAY_IN4_PIN 27  // MIL
 #endif
 #ifndef RELAY_ACTIVE_HIGH
 #define RELAY_ACTIVE_HIGH 0  // Default to active-LOW modules; set to 1 if active-HIGH
@@ -85,6 +86,14 @@ static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool
 #define SCREEN_HEIGHT 64
 #endif
 
+// Feature toggles (compile-time)
+#ifndef FEATURE_TEST_SERVER
+#define FEATURE_TEST_SERVER 1
+#endif
+#ifndef FEATURE_MIL_LOOKUP
+#define FEATURE_MIL_LOOKUP 1
+#endif
+
 // SPI OLED (SSD1322) via U8g2, full framebuffer, HW SPI (rotated 180°)
 U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, PIN_CS, PIN_DC, PIN_RST);
 static WebServer g_server(80);
@@ -93,9 +102,6 @@ static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
 static const uint32_t FETCH_INTERVAL_MS = 30000;        // 30s between API calls
 static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;   // HTTP connect timeout
 static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;      // HTTP read timeout
-// Preallocated HTTP body buffer to reduce heap churn
-static const size_t BODY_BUF_CAP = 65536;  // 64KB cap
-static char* g_bodyBuf = nullptr;
 // Wi‑Fi reconnect state
 static bool wifiConnecting = false;
 static bool wifiInitialized = false;
@@ -145,7 +151,7 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
   String url = String(API_BASE);
   if (!url.startsWith("http")) url = String("https://") + url;
   url += "/v2/mil";
-  Serial.print("[HTTP] GET "); Serial.println(url);
+  LOG_INFO("HTTP GET %s", url.c_str());
 
   HTTPClient http;
   http.setReuse(false);
@@ -160,7 +166,7 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
   http.addHeader("User-Agent", "ESP32-FlightDisplay/1.0");
 
   int code = http.GET();
-  Serial.print("[HTTP] Status (mil): "); Serial.println(code);
+  LOG_INFO("HTTP status (mil): %d", code);
   if (code != HTTP_CODE_OK) { http.end(); return false; }
 
   String lowerHex = String(hex);
@@ -208,7 +214,7 @@ static FlightInfo g_lastShown;
 
 static String classifyOp(const FlightInfo &fi) {
   // 1) Military always wins regardless of size
-  if (fi.hex.length()) {
+  if (FEATURE_MIL_LOOKUP && fi.hex.length()) {
     bool isMil;
     if (milCacheLookup(fi.hex, isMil)) {
       if (isMil) return String("MIL");
@@ -405,9 +411,9 @@ static bool fetchNearestFlight(FlightInfo &out) {
 
   // Single HTTPS attempt; server enforces HTTPS and may close HTTP
   String url = buildUrl(true);
-  Serial.print("[HTTP] GET "); Serial.println(url);
-  Serial.print("[WiFi] RSSI: "); Serial.println(WiFi.RSSI());
-  Serial.print("[MEM] Free heap: "); Serial.println(ESP.getFreeHeap());
+  LOG_INFO("HTTP GET %s", url.c_str());
+  LOG_DEBUG("WiFi RSSI: %d dBm", WiFi.RSSI());
+  LOG_DEBUG("Free heap: %u", (unsigned)ESP.getFreeHeap());
 
   HTTPClient http;
   http.setReuse(false);
@@ -425,15 +431,15 @@ static bool fetchNearestFlight(FlightInfo &out) {
   http.addHeader("User-Agent", "ESP32-FlightDisplay/1.0");
 
   int code = http.GET();
-  Serial.print("[HTTP] Status: "); Serial.println(code);
+  LOG_INFO("HTTP status: %d", code);
   if (code != HTTP_CODE_OK) {
-    Serial.print("[HTTP] Error: "); Serial.println(http.errorToString(code));
+    LOG_WARN("HTTP error: %s", http.errorToString(code).c_str());
     http.end();
     return false;
   }
 
   size_t contentLength = http.getSize();
-  Serial.print("[HTTP] Content-Length: "); Serial.println(contentLength);
+  LOG_DEBUG("HTTP Content-Length: %u", (unsigned)contentLength);
 
   // Build a filter to only keep what we need
   StaticJsonDocument<256> filter;
@@ -450,70 +456,25 @@ static bool fetchNearestFlight(FlightInfo &out) {
   // closest endpoint returns only one aircraft, but keep minimal fields
   acObj["seen_pos"] = true;
 
-  DynamicJsonDocument doc(49152); // ~48KB; holds filtered subset
-
-  if (contentLength > 0 && contentLength < 200000) {
-    // Read exact bytes into a reusable buffer to avoid heap fragmentation
-    if (!g_bodyBuf || contentLength + 1 > BODY_BUF_CAP) {
-      Serial.println("[MEM] Body buffer not available or too small.");
-      http.end();
-      return false;
-    }
-    Stream &s = http.getStream();
-    size_t total = 0;
-    unsigned long deadline = millis() + HTTP_READ_TIMEOUT_MS;
-    while (total < contentLength && millis() < deadline) {
-      int avail = s.available();
-      if (avail > 0) {
-        size_t chunk = (size_t)avail;
-        size_t remain = contentLength - total;
-        if (chunk > remain) chunk = remain;
-        int r = s.readBytes(g_bodyBuf + total, chunk);
-        if (r > 0) {
-          total += (size_t)r;
-          deadline = millis() + HTTP_READ_TIMEOUT_MS; // extend deadline on progress
-        } else {
-          delay(10);
-          yield();
-        }
-      } else {
-        delay(10);
-        yield();
-      }
-    }
-    g_bodyBuf[total] = '\0';
-    Serial.print("[HTTP] Read bytes: "); Serial.println(total);
-    if (total != contentLength) {
-      Serial.println("[HTTP] Warning: body shorter than Content-Length.");
-    }
-    http.end();
-    DeserializationError err = deserializeJson(doc, g_bodyBuf, total, DeserializationOption::Filter(filter));
-    if (err) {
-      Serial.print("[JSON] Parse error: "); Serial.println(err.c_str());
-      Serial.print("[HTTP] Body preview (512): "); Serial.println(String(g_bodyBuf).substring(0, 512));
-      return false;
-    }
-  } else {
-    // Unknown length; fall back to streamed parsing
-    DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
-    http.end();
-    if (err) {
-      Serial.print("[JSON] Parse error (streamed): "); Serial.println(err.c_str());
-      return false;
-    }
+  DynamicJsonDocument doc(8192); // ~8KB; filtered and single-aircraft
+  // Prefer streamed parsing to minimize RAM and fragmentation
+  DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+  http.end();
+  if (err) {
+    LOG_WARN("JSON parse error (streamed): %s", err.c_str());
+    return false;
   }
 
   FlightInfo closest = parseClosest(doc.as<JsonVariant>());
   if (closest.valid) {
-    Serial.print("[JSON] Closest: "); Serial.print(closest.ident);
-    Serial.print("  dist "); Serial.print(closest.distanceKm, 2); Serial.println(" km");
+    LOG_INFO("Closest %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
     // Classify operation (MIL/COM/PVT)
     closest.opClass = classifyOp(closest);
-    Serial.print("[CLASS] op: "); Serial.println(closest.opClass);
+    LOG_INFO("Classified op: %s", closest.opClass.c_str());
     out = closest;
     return true;
   }
-  Serial.println("[JSON] No valid aircraft found in response.");
+  LOG_INFO("No valid aircraft found in response");
   return false;
 }
 
@@ -534,10 +495,10 @@ static bool applyClosestJson(const char* json, size_t len, FlightInfo &out) {
   acObj["lon"] = true;
   acObj["seen_pos"] = true;
 
-  DynamicJsonDocument doc(49152);
+  DynamicJsonDocument doc(8192);
   DeserializationError err = deserializeJson(doc, json, len, DeserializationOption::Filter(filter));
   if (err) {
-    Serial.print("[TEST] JSON parse error: "); Serial.println(err.c_str());
+    LOG_WARN("TEST JSON parse error: %s", err.c_str());
     return false;
   }
   FlightInfo closest = parseClosest(doc.as<JsonVariant>());
@@ -554,7 +515,7 @@ static void handleTestClosestPut() {
     return;
   }
   String body = g_server.arg("plain");
-  Serial.print("[TEST] PUT /test/closest body bytes: "); Serial.println(body.length());
+  LOG_INFO("TEST PUT /test/closest bytes: %d", body.length());
   FlightInfo fi;
   // Try simple schema first
   {
@@ -737,49 +698,42 @@ void setup() {
 
   Serial.begin(115200);
   delay(20);
-  Serial.println("\n[Boot] Flight Display starting...");
+  Serial.println(F("\n[Boot] Flight Display starting..."));
 #if defined(ESP32)
   auto rr = esp_reset_reason();
-  Serial.print("[Boot] Reset reason: ");
+  Serial.print(F("[Boot] Reset reason: "));
   switch (rr) {
-    case ESP_RST_POWERON: Serial.println("POWERON"); break;
-    case ESP_RST_EXT:     Serial.println("EXT"); break;
-    case ESP_RST_SW:      Serial.println("SW"); break;
-    case ESP_RST_PANIC:   Serial.println("PANIC"); break;
-    case ESP_RST_INT_WDT: Serial.println("INT_WDT"); break;
-    case ESP_RST_TASK_WDT:Serial.println("TASK_WDT"); break;
-    case ESP_RST_WDT:     Serial.println("WDT"); break;
-    case ESP_RST_DEEPSLEEP: Serial.println("DEEPSLEEP"); break;
-    case ESP_RST_BROWNOUT: Serial.println("BROWNOUT"); break;
-    case ESP_RST_SDIO:    Serial.println("SDIO"); break;
+    case ESP_RST_POWERON: Serial.println(F("POWERON")); break;
+    case ESP_RST_EXT:     Serial.println(F("EXT")); break;
+    case ESP_RST_SW:      Serial.println(F("SW")); break;
+    case ESP_RST_PANIC:   Serial.println(F("PANIC")); break;
+    case ESP_RST_INT_WDT: Serial.println(F("INT_WDT")); break;
+    case ESP_RST_TASK_WDT:Serial.println(F("TASK_WDT")); break;
+    case ESP_RST_WDT:     Serial.println(F("WDT")); break;
+    case ESP_RST_DEEPSLEEP: Serial.println(F("DEEPSLEEP")); break;
+    case ESP_RST_BROWNOUT: Serial.println(F("BROWNOUT")); break;
+    case ESP_RST_SDIO:    Serial.println(F("SDIO")); break;
     default:              Serial.println((int)rr); break;
   }
 #endif
-  // Allocate reusable body buffer once
-  g_bodyBuf = (char*)malloc(BODY_BUF_CAP);
-  if (g_bodyBuf) {
-    Serial.print("[MEM] Body buffer: "); Serial.print(BODY_BUF_CAP); Serial.println(" bytes");
-  } else {
-    Serial.println("[MEM] Body buffer allocation failed");
-  }
   // Wi‑Fi event logging and dynamic power management
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
     switch(event) {
       case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-        Serial.print("[WiFi] Disconnected. Reason: "); Serial.println(info.wifi_sta_disconnected.reason);
+        LOG_WARN("WiFi disconnected. Reason: %d", info.wifi_sta_disconnected.reason);
         wifiConnecting = false;
         // Drop TX power while attempting to reconnect to reduce current spikes
         WiFi.setTxPower(WIFI_BOOT_TXPOWER);
         WiFi.setSleep(true);
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        Serial.print("[WiFi] Got IP: "); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+        Serial.print(F("[WiFi] Got IP: ")); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
         wifiConnecting = false;
         // Raise TX power after association; disable modem sleep for responsiveness
         WiFi.setTxPower(WIFI_RUN_TXPOWER);
         WiFi.setSleep(false);
         // Wi‑Fi up; print reminder of server endpoint
-        Serial.println("[HTTP] Server ready on port 80");
+        Serial.println(F("[HTTP] Server ready on port 80"));
         break;
       default: break;
     }
@@ -803,10 +757,12 @@ void setup() {
   connectWiFi();
 
   // Start HTTP test server regardless of Wi‑Fi state; it will accept once IP is assigned
+#if FEATURE_TEST_SERVER
   g_server.on("/test/closest", HTTP_PUT, handleTestClosestPut);
   g_server.onNotFound([](){ g_server.send(404, "text/plain", "Not Found"); });
   g_server.begin();
-  Serial.println("[HTTP] Test server listening on /test/closest (PUT)");
+  Serial.println(F("[HTTP] Test server listening on /test/closest (PUT)"));
+#endif
 }
 
 void loop() {
@@ -845,7 +801,10 @@ void loop() {
   }
 
   // Handle incoming HTTP requests for test endpoint
+#if FEATURE_TEST_SERVER
   g_server.handleClient();
+#endif
 
-  delay(100);
+  // Cooperative yield without blocking
+  yield();
 }

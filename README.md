@@ -36,18 +36,18 @@ Notes
 This project uses the [adsb.lol](https://api.adsb.lol) API to retrieve live aircraft data.  
 Endpoints used:
 
-### Nearby Flights
+### Closest Flight
 
-GET /v2/point/{lat}/{lon}/{radius}
+GET /v2/closest/{lat}/{lon}/{radius}
 
 - **lat**: Latitude in decimal degrees  
 - **lon**: Longitude in decimal degrees  
 - **radius**: Search radius in kilometers (**integer**)  
 
 Example:
-https://api.adsb.lol/v2/point/47.6000/-122.3300/32
+https://api.adsb.lol/v2/closest/47.6000/-122.3300/32
 
-Returns a list of aircraft objects with fields like:
+Returns the closest aircraft object with fields like:
 ```json
 {
   "hex": "A388AF",
@@ -60,3 +60,21 @@ Returns a list of aircraft objects with fields like:
   "lat": 47.621,
   "lon": -122.350
 }
+
+### Optional MIL classification
+
+To detect military aircraft the device can query `/v2/mil` once per new hex and cache the result for several hours.
+- Toggle at compile time with `#define FEATURE_MIL_LOOKUP 0/1` (default: 1).
+- If disabled, MIL classification is inferred only from type/seat heuristics.
+
+### Local Test Endpoint
+
+The device exposes a simple test endpoint (when enabled) to push JSON and render without calling the API:
+
+- `PUT http://<device-ip>/test/closest`
+  - Body: either a minimal test schema `{ "t": "B738", "ident": "TEST123", "alt": 32000, "dist": 12.3 }` or the full `/v2/closest` schema.
+- Toggle at compile time with `#define FEATURE_TEST_SERVER 0/1` (default: 1).
+
+Notes
+- JSON parsing is filtered and streamed to minimize RAM (~8 KB doc).
+- All network I/O has bounded timeouts; Wi‑Fi reconnects automatically.
