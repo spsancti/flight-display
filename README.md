@@ -23,6 +23,21 @@ Notes
 - Pins are configured in `config.h` and can be changed as needed.
 - Power the OLED per vendor specs; logic is 3.3V.
 
+### Relay Calibration
+
+If relays don’t match the expected channel (e.g., COM lights the wrong relay or a different channel energizes on boot):
+- Set `RELAY_ACTIVE_HIGH` according to your module (most 4‑ch boards are active‑LOW = 0).
+- Map roles explicitly by overriding in `config.h`:
+  - `RELAY_STATUS_PIN`, `RELAY_COM_PIN`, `RELAY_PVT_PIN`, `RELAY_MIL_PIN`
+- Optionally disable the dedicated status channel: `#define RELAY_USE_STATUS_CHANNEL 0`.
+- Use the built‑in test endpoint to validate wiring per channel:
+  - `GET http://<device-ip>/test/relay?name=status&on=1`
+  - `GET http://<device-ip>/test/relay?name=com&on=1`
+  - `GET http://<device-ip>/test/relay?name=pvt&on=1`
+  - `GET http://<device-ip>/test/relay?name=mil&on=1`
+  - Or by GPIO: `GET /test/relay?pin=25&on=1`
+Turn channels off with `on=0`.
+
 ## Libraries
 
 - `U8g2` (by olikraus) for SSD1322 rendering
