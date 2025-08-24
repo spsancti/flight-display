@@ -7,41 +7,92 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#ifdef ESP32
+#include <ArduinoOTA.h>
+#include <ESPmDNS.h>
+#endif
 #include <ArduinoJson.h>
 #include <U8g2lib.h>
 #include <SPI.h>
+#include <WebServer.h>
 #if defined(ESP32)
 #include <esp_system.h>
 #endif
-#include <WebServer.h>
 
 #include "config.h"  // Create from config.example.h and do not commit secrets
 #include "aircraft_types.h"
 #include "log.h"
 
-// Forward declaration to satisfy Arduino's auto-generated prototypes
-struct FlightInfo;
+// FlightInfo is used across parsing, test overrides, and rendering.
+// Define it early so it's a complete type wherever needed.
+struct FlightInfo {
+  String ident;     // flight/callsign or registration/hex fallback
+  String typeCode;  // aircraft type (t)
+  String category;  // raw category code
+  long altitudeFt = -1;
+  double lat = NAN;
+  double lon = NAN;
+  double distanceKm = NAN;
+  String hex;  // transponder hex id
+  bool hasCallsign = false;
+  String opClass;  // MIL/COM/PVT
+  bool valid = false;
+  int seatOverride = -1;  // if >0, override seat display
+};
+// Local function prototypes used before definitions
+// Local function prototypes used before definitions
+static void relaysPowerOnly();
+static void showSplash(const char *msgTop, const char *msgBottom = nullptr);
+static void drawCentered(const String &text, int16_t baselineY);
+
+// -----------------------------
+// OTA configuration (overridable in config.h)
+// -----------------------------
+#ifndef FEATURE_OTA
+#define FEATURE_OTA 1  // Set to 0 to disable Arduino OTA
+#endif
+#ifndef OTA_PORT
+#define OTA_PORT 3232
+#endif
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "flight-display"
+#endif
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD ""  // Empty = no auth (DEV ONLY). Set a strong password for production.
+#endif
 
 // Relay module pins and logic (override in config.h if desired)
 #ifndef RELAY_IN1_PIN
-#define RELAY_IN1_PIN 33  // Power/Status (blink on boot, solid after first display)
+#define RELAY_IN1_PIN 33
 #endif
 #ifndef RELAY_IN2_PIN
-#define RELAY_IN2_PIN 25  // COM
+#define RELAY_IN2_PIN 32
 #endif
 #ifndef RELAY_IN3_PIN
-#define RELAY_IN3_PIN 26  // PVT
+#define RELAY_IN3_PIN 26
 #endif
 #ifndef RELAY_IN4_PIN
-#define RELAY_IN4_PIN 27  // MIL
+#define RELAY_IN4_PIN 27
 #endif
+
+// Explicit role mapping (override any of these to match wiring)
+#ifndef RELAY_STATUS_PIN
+#define RELAY_STATUS_PIN RELAY_IN1_PIN
+#endif
+#ifndef RELAY_PVT_PIN
+#define RELAY_PVT_PIN RELAY_IN2_PIN
+#endif
+#ifndef RELAY_COM_PIN
+#define RELAY_COM_PIN RELAY_IN3_PIN
+#endif
+#ifndef RELAY_MIL_PIN
+#define RELAY_MIL_PIN RELAY_IN4_PIN
+#endif
+
 #ifndef RELAY_ACTIVE_HIGH
-#define RELAY_ACTIVE_HIGH 0  // Default to active-LOW modules; set to 1 if active-HIGH
+#define RELAY_ACTIVE_HIGH 0  // 0=active LOW modules; set 1 if active HIGH
 #endif
-// Blink IN1 during boot? Relays draw significant current; default OFF to avoid brownouts.
-#ifndef RELAY_BLINK_ON_BOOT
-#define RELAY_BLINK_ON_BOOT 0
-#endif
+// Status (power) indicator is always ON during runtime.
 
 // Boot staging: allow power to settle before Wi‑Fi/TLS ramps current
 #ifndef BOOT_POWER_SETTLE_MS
@@ -57,26 +108,42 @@ struct FlightInfo;
 #endif
 
 static inline void relayWrite(int pin, bool on) {
-  if (pin < 0) return; // allow disabling a channel by setting pin to -1
+  if (pin < 0) return;  // allow disabling a channel by setting pin to -1
   digitalWrite((uint8_t)pin, (RELAY_ACTIVE_HIGH ? (on ? HIGH : LOW) : (on ? LOW : HIGH)));
 }
 
-static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool blinkPhase) {
-  if (!haveDisplayed) {
-    // Keep all relays OFF during boot to avoid brownouts from coil inrush.
-    // Optionally blink IN1 if explicitly enabled.
-    relayWrite(RELAY_IN1_PIN, (RELAY_BLINK_ON_BOOT ? blinkPhase : false));
-    relayWrite(RELAY_IN2_PIN, false);
-    relayWrite(RELAY_IN3_PIN, false);
-    relayWrite(RELAY_IN4_PIN, false);
-    return;
+static void relaysInit() {
+  const int rolePins[] = { RELAY_STATUS_PIN, RELAY_PVT_PIN, RELAY_COM_PIN, RELAY_MIL_PIN };
+  const int INACTIVE = (RELAY_ACTIVE_HIGH ? LOW : HIGH);  // OFF level
+  // Preload OFF level before switching to OUTPUT to avoid glitches
+  for (size_t i = 0; i < sizeof(rolePins) / sizeof(rolePins[0]); ++i) {
+    int p = rolePins[i];
+    if (p < 0) continue;
+    digitalWrite((uint8_t)p, INACTIVE);
+    pinMode((uint8_t)p, OUTPUT);
+    digitalWrite((uint8_t)p, INACTIVE);
   }
-  // Solid power/status
-  relayWrite(RELAY_IN1_PIN, true);
-  // Exactly one category
-  relayWrite(RELAY_IN2_PIN, opClass == "COM");
-  relayWrite(RELAY_IN3_PIN, opClass == "PVT");
-  relayWrite(RELAY_IN4_PIN, opClass == "MIL");
+  // Turn status ON (power indicator); keep categories OFF
+  relayWrite(RELAY_STATUS_PIN, true);
+}
+
+static void relaysPowerOnly() {
+  // Status ON, categories OFF
+  relayWrite(RELAY_STATUS_PIN, true);
+  relayWrite(RELAY_PVT_PIN, false);
+  relayWrite(RELAY_COM_PIN, false);
+  relayWrite(RELAY_MIL_PIN, false);
+}
+
+static void relaysShowCategory(const String &opClass) {
+  // Status ON, exactly one category ON
+  relayWrite(RELAY_STATUS_PIN, true);
+  relayWrite(RELAY_PVT_PIN, false);
+  relayWrite(RELAY_COM_PIN, false);
+  relayWrite(RELAY_MIL_PIN, false);
+  if (opClass == "PVT") relayWrite(RELAY_PVT_PIN, true);
+  else if (opClass == "COM") relayWrite(RELAY_COM_PIN, true);
+  else if (opClass == "MIL") relayWrite(RELAY_MIL_PIN, true);
 }
 
 #ifndef SCREEN_WIDTH
@@ -86,63 +153,181 @@ static void updateRelaysForState(bool haveDisplayed, const String &opClass, bool
 #define SCREEN_HEIGHT 64
 #endif
 
-// Feature toggles (compile-time)
-#ifndef FEATURE_TEST_SERVER
-#define FEATURE_TEST_SERVER 1
-#endif
 #ifndef FEATURE_MIL_LOOKUP
 #define FEATURE_MIL_LOOKUP 1
 #endif
 
 // SPI OLED (SSD1322) via U8g2, full framebuffer, HW SPI (rotated 180°)
 U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, PIN_CS, PIN_DC, PIN_RST);
-static WebServer g_server(80);
 
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;  // 20s
 static const uint32_t FETCH_INTERVAL_MS = 30000;        // 30s between API calls
-static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;   // HTTP connect timeout
-static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;      // HTTP read timeout
+static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;  // HTTP connect timeout
+static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;     // HTTP read timeout
 // Wi‑Fi reconnect state
 static bool wifiConnecting = false;
 static bool wifiInitialized = false;
 static bool wifiEverBegun = false;
 
+#if FEATURE_OTA
+static bool g_otaReady = false;        // true after ArduinoOTA.begin while Wi‑Fi has IP
+static volatile bool g_inOta = false;  // set during OTA to pause app work
+#endif
+
 // MIL cache
-struct MilCacheEntry { String hex; uint32_t ts; bool isMil; };
+struct MilCacheEntry {
+  String hex;
+  uint32_t ts;
+  bool isMil;
+};
 static const size_t MIL_CACHE_SIZE = 16;
 static MilCacheEntry g_milCache[MIL_CACHE_SIZE];
 
+// Flight info structure used across network parsing, test overrides, and rendering
+// (struct FlightInfo defined earlier)
+
+// -----------------------------
+// Test HTTP server (/test/closest)
+// -----------------------------
+#ifndef FEATURE_TEST_ENDPOINT
+#define FEATURE_TEST_ENDPOINT 1  // Set 0 to remove test HTTP endpoint
+#endif
+#ifndef TEST_OVERRIDE_TTL_MS
+#define TEST_OVERRIDE_TTL_MS (5UL * 60UL * 1000UL)  // 5 minutes
+#endif
+
+#if FEATURE_TEST_ENDPOINT
+static WebServer g_http(80);
+static bool g_httpStarted = false;
+struct TestOverride {
+  bool active = false;
+  uint32_t expiresAt = 0;
+  FlightInfo fi;       // prepared record to render
+  bool dirty = false;  // force immediate render on next loop
+} g_test;
+
+static void httpHandleRoot() {
+  g_http.send(200, "text/plain", "OK");
+}
+
+static void httpHandleGetClosest() {
+  StaticJsonDocument<256> doc;
+  bool alive = g_test.active && (int32_t)(millis() - g_test.expiresAt) < 0;
+  doc["active"] = alive;
+  doc["expires_in_ms"] = alive ? (int32_t)((int32_t)g_test.expiresAt - (int32_t)millis()) : 0;
+  doc["ident"] = g_test.fi.ident;
+  doc["op"] = g_test.fi.opClass;
+  doc["t"] = g_test.fi.typeCode;
+  doc["alt"] = g_test.fi.altitudeFt;
+  doc["dist"] = g_test.fi.distanceKm;
+  String out;
+  serializeJson(doc, out);
+  g_http.send(200, "application/json", out);
+}
+
+static void httpHandlePutClosest() {
+  if (!g_http.hasArg("plain")) {
+    g_http.send(400, "text/plain", "Missing body");
+    return;
+  }
+  const String &body = g_http.arg("plain");
+  StaticJsonDocument<384> doc;
+  DeserializationError err = deserializeJson(doc, body);
+  if (err) {
+    g_http.send(400, "text/plain", String("Bad JSON: ") + err.c_str());
+    return;
+  }
+  FlightInfo fi;
+  fi.valid = true;
+  fi.ident = doc["ident"].isNull() ? String("TEST") : String(doc["ident"].as<const char *>());
+  fi.typeCode = doc["t"].isNull() ? String("") : String(doc["t"].as<const char *>());
+  fi.altitudeFt = doc["alt"].isNull() ? -1 : doc["alt"].as<long>();
+  fi.distanceKm = doc["dist"].isNull() ? NAN : doc["dist"].as<double>();
+  fi.hasCallsign = true;
+  if (!doc["op"].isNull()) fi.opClass = String(doc["op"].as<const char *>());
+  if (!doc["seats"].isNull()) fi.seatOverride = doc["seats"].as<int>();
+  if (fi.opClass.length() == 0) {
+    fi.opClass = (fi.seatOverride > 0 && fi.seatOverride <= 15) ? String("PVT") : String("COM");
+  }
+  g_test.fi = fi;
+  g_test.active = true;
+  g_test.expiresAt = millis() + TEST_OVERRIDE_TTL_MS;
+  g_test.dirty = true;
+  StaticJsonDocument<128> ok;
+  ok["status"] = "ok";
+  ok["until_ms"] = g_test.expiresAt;
+  String out;
+  serializeJson(ok, out);
+  g_http.send(200, "application/json", out);
+}
+
+static void httpHandleDeleteClosest() {
+  g_test.active = false;
+  g_test.dirty = false;
+  g_test.expiresAt = 0;
+  g_http.send(200, "application/json", "{\"status\":\"cleared\"}");
+}
+
+static void httpStartOnce() {
+  if (g_httpStarted) return;
+  g_http.on("/", HTTP_GET, httpHandleRoot);
+  g_http.on("/healthz", HTTP_GET, httpHandleRoot);
+  g_http.on("/test/closest", HTTP_GET, httpHandleGetClosest);
+  g_http.on("/test/closest", HTTP_PUT, httpHandlePutClosest);
+  g_http.on("/test/closest", HTTP_DELETE, httpHandleDeleteClosest);
+  g_http.begin();
+  g_httpStarted = true;
+  LOG_INFO("HTTP test server listening on :80");
+}
+#endif
 static bool milCacheLookup(const String &hex, bool &isMilOut) {
-  String key = hex; key.trim(); key.toUpperCase();
+  String key = hex;
+  key.trim();
+  key.toUpperCase();
   uint32_t now = millis();
-  const uint32_t TTL = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+  const uint32_t TTL = 6UL * 60UL * 60UL * 1000UL;  // 6 hours
   for (size_t i = 0; i < MIL_CACHE_SIZE; ++i) {
     if (g_milCache[i].hex.length() && g_milCache[i].hex.equalsIgnoreCase(key)) {
-      if ((now - g_milCache[i].ts) < TTL) { isMilOut = g_milCache[i].isMil; return true; }
+      if ((now - g_milCache[i].ts) < TTL) {
+        isMilOut = g_milCache[i].isMil;
+        return true;
+      }
     }
   }
   return false;
 }
 
 static void milCacheStore(const String &hex, bool isMil) {
-  String key = hex; key.trim(); key.toUpperCase();
+  String key = hex;
+  key.trim();
+  key.toUpperCase();
   uint32_t now = millis();
   // Update existing
   for (size_t i = 0; i < MIL_CACHE_SIZE; ++i) {
     if (g_milCache[i].hex.length() && g_milCache[i].hex.equalsIgnoreCase(key)) {
-      g_milCache[i].isMil = isMil; g_milCache[i].ts = now; return;
+      g_milCache[i].isMil = isMil;
+      g_milCache[i].ts = now;
+      return;
     }
   }
   // Insert into first empty or oldest
   size_t idx = MIL_CACHE_SIZE;
   uint32_t oldest = UINT32_MAX;
   for (size_t i = 0; i < MIL_CACHE_SIZE; ++i) {
-    if (g_milCache[i].hex.length() == 0) { idx = i; break; }
+    if (g_milCache[i].hex.length() == 0) {
+      idx = i;
+      break;
+    }
     uint32_t age = now - g_milCache[i].ts;
-    if (age > oldest) { oldest = age; idx = i; }
+    if (age > oldest) {
+      oldest = age;
+      idx = i;
+    }
   }
   if (idx >= MIL_CACHE_SIZE) idx = 0;
-  g_milCache[idx].hex = key; g_milCache[idx].isMil = isMil; g_milCache[idx].ts = now;
+  g_milCache[idx].hex = key;
+  g_milCache[idx].isMil = isMil;
+  g_milCache[idx].ts = now;
 }
 
 static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
@@ -158,8 +343,12 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
   http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
   http.setTimeout(HTTP_READ_TIMEOUT_MS);
 
-  WiFiClientSecure client; client.setInsecure();
-  if (!http.begin(client, url)) { Serial.println("[HTTP] begin() failed (mil)"); return false; }
+  WiFiClientSecure client;
+  client.setInsecure();
+  if (!http.begin(client, url)) {
+    Serial.println("[HTTP] begin() failed (mil)");
+    return false;
+  }
   http.addHeader("Accept", "application/json");
   http.addHeader("Accept-Encoding", "identity");
   http.addHeader("Connection", "close");
@@ -167,7 +356,10 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
 
   int code = http.GET();
   LOG_INFO("HTTP status (mil): %d", code);
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
 
   String lowerHex = String(hex);
   lowerHex.toLowerCase();
@@ -179,34 +371,76 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &isMilOut) {
   Stream &s = http.getStream();
   while (millis() < deadline) {
     int n = s.readBytes(buf, CHUNK);
-    if (n <= 0) { delay(10); yield(); if (!s.available()) break; else continue; }
-    deadline = millis() + HTTP_READ_TIMEOUT_MS; // extend
+    if (n <= 0) {
+      delay(10);
+      yield();
+      if (!s.available()) break;
+      else continue;
+    }
+    deadline = millis() + HTTP_READ_TIMEOUT_MS;  // extend
     buf[n] = '\0';
     String chunk = carry + String(buf);
     chunk.toLowerCase();
-    if (chunk.indexOf(needle) >= 0) { isMilOut = true; http.end(); return true; }
+    if (chunk.indexOf(needle) >= 0) {
+      isMilOut = true;
+      http.end();
+      return true;
+    }
     // keep tail overlap
     if ((size_t)n >= needle.length()) carry = String(buf + n - needle.length());
     else carry = String(buf, n);
   }
   http.end();
-  return true; // completed scan, not found => not mil
+  return true;  // completed scan, not found => not mil
 }
 
-struct FlightInfo {
-  String ident;     // flight/callsign or registration/hex fallback
-  String typeCode;  // aircraft type (t)
-  String category;  // raw category code
-  long altitudeFt = -1;
-  double lat = NAN;
-  double lon = NAN;
-  double distanceKm = NAN;
-  String hex;       // transponder hex id
-  bool hasCallsign = false;
-  String opClass;   // MIL/COM/PVT
-  bool valid = false;
-  int seatOverride = -1; // if >0, override seat display
-};
+#if FEATURE_OTA
+static void otaBeginOnce() {
+  if (g_otaReady) return;
+  ArduinoOTA.setPort(OTA_PORT);
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  if (strlen(OTA_PASSWORD) > 0) {
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+    LOG_INFO("OTA auth enabled");
+  } else {
+    LOG_WARN("OTA password empty; allow unauthenticated updates (DEV ONLY)");
+  }
+
+  ArduinoOTA.onStart([]() {
+    g_inOta = true;
+    LOG_INFO("OTA start");
+    // Visual indicator + put relays in safe state
+    showSplash("Updating...", "Do not power off");
+    relaysPowerOnly();
+  });
+  ArduinoOTA.onEnd([]() {
+    LOG_INFO("OTA end");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    static uint32_t lastDraw = 0;
+    uint32_t now = millis();
+    if (now - lastDraw < 150) return;  // rate-limit drawing
+    lastDraw = now;
+    uint8_t pct = (total ? (progress * 100U / total) : 0);
+    u8g2.clearBuffer();
+    u8g2.setDrawColor(1);
+    u8g2.setFont(u8g2_font_6x12_tf);
+    char line[48];
+    snprintf(line, sizeof(line), "OTA %u%%", (unsigned)pct);
+    drawCentered(String(line), (SCREEN_HEIGHT / 2));
+    u8g2.sendBuffer();
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    LOG_ERROR("OTA error: %d", (int)error);
+    g_inOta = false;  // allow app to resume
+  });
+  ArduinoOTA.begin();
+  g_otaReady = true;
+  LOG_INFO("OTA ready: %s.local:%d", OTA_HOSTNAME, OTA_PORT);
+}
+#endif
+
+// (moved earlier)
 
 // Shared display state so network and test endpoints can update consistently
 static bool g_haveDisplayed = false;
@@ -260,13 +494,13 @@ static void drawCentered(const String &text, int16_t baselineY) {
   u8g2.drawUTF8(x, baselineY, text.c_str());
 }
 
-static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
+static void showSplash(const char *msgTop, const char *msgBottom) {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
 
   // Fonts
-  const uint8_t* titleFont = u8g2_font_10x20_tf;
-  const uint8_t* bodyFont  = u8g2_font_6x12_tf;
+  const uint8_t *titleFont = u8g2_font_10x20_tf;
+  const uint8_t *bodyFont = u8g2_font_6x12_tf;
 
   // Measure line heights
   u8g2.setFont(titleFont);
@@ -279,7 +513,7 @@ static void showSplash(const char *msgTop, const char *msgBottom = nullptr) {
   int16_t bodyDescent = -u8g2.getDescent();
   int16_t bodyH = bodyAscent + bodyDescent;
 
-  const int16_t gap = 6; // vertical spacing between lines
+  const int16_t gap = 6;  // vertical spacing between lines
   int16_t totalH = titleH + gap + bodyH + ((msgBottom) ? (gap + bodyH) : 0);
   if (totalH < 0) totalH = 0;
   int16_t y0 = (SCREEN_HEIGHT - totalH) / 2;
@@ -309,7 +543,8 @@ static void connectWiFi() {
   if (!wifiInitialized) return;
   // Begin only once; rely on auto-reconnect afterwards
   if (wifiEverBegun) return;
-  Serial.print("[WiFi] Connecting to "); Serial.println(WIFI_SSID);
+  Serial.print("[WiFi] Connecting to ");
+  Serial.println(WIFI_SSID);
   showSplash("Connecting Wi-Fi...", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   wifiConnecting = true;
@@ -343,7 +578,7 @@ static bool extractLatLon(JsonObject obj, double &outLat, double &outLon) {
   if (obj.containsKey("lat") && obj.containsKey("lon")) {
     outLat = obj["lat"].as<double>();
     outLon = obj["lon"].as<double>();
-    if (!(outLat == 0.0 && outLon == 0.0)) return true; // ignore (0,0)
+    if (!(outLat == 0.0 && outLon == 0.0)) return true;  // ignore (0,0)
   }
   // Do not use lastPosition fallback to avoid selecting stale tracks
   return false;
@@ -364,8 +599,10 @@ static FlightInfo parseClosest(JsonVariant root) {
   // Build ident preference chain: flight -> r -> hex
   String ident;
   bool hasCallsign = false;
-  if (obj["flight"]) { ident = String(obj["flight"].as<const char *>()); hasCallsign = ident.length() > 0; }
-  else if (obj["r"]) ident = String(obj["r"].as<const char *>());
+  if (obj["flight"]) {
+    ident = String(obj["flight"].as<const char *>());
+    hasCallsign = ident.length() > 0;
+  } else if (obj["r"]) ident = String(obj["r"].as<const char *>());
   else if (obj["hex"]) ident = String(obj["hex"].as<const char *>());
   else ident = String("(unknown)");
   ident.trim();
@@ -382,8 +619,8 @@ static FlightInfo parseClosest(JsonVariant root) {
   res.altitudeFt = alt;
   res.lat = lat;
   res.lon = lon;
-  res.distanceKm = haversineKm(HOME_LAT, HOME_LON, lat, lon); // 2D ground distance for display only
-  res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char*>());
+  res.distanceKm = haversineKm(HOME_LAT, HOME_LON, lat, lon);  // 2D ground distance for display only
+  res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char *>());
   res.hasCallsign = hasCallsign;
   return res;
 }
@@ -391,7 +628,7 @@ static FlightInfo parseClosest(JsonVariant root) {
 static bool fetchNearestFlight(FlightInfo &out) {
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  auto buildUrl = [] (bool tls) {
+  auto buildUrl = [](bool tls) {
     String base = String(API_BASE);
     if (tls) {
       if (base.startsWith("http://")) base.replace("http://", "https://");
@@ -421,10 +658,14 @@ static bool fetchNearestFlight(FlightInfo &out) {
   http.setTimeout(HTTP_READ_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-  WiFiClientSecure client; client.setInsecure();
+  WiFiClientSecure client;
+  client.setInsecure();
   uint32_t clientTimeoutSec = (HTTP_READ_TIMEOUT_MS + 999) / 1000;
   client.setTimeout(clientTimeoutSec);
-  if (!http.begin(client, url)) { Serial.println("[HTTP] begin() failed (TLS)"); return false; }
+  if (!http.begin(client, url)) {
+    Serial.println("[HTTP] begin() failed (TLS)");
+    return false;
+  }
   http.addHeader("Accept", "application/json");
   http.addHeader("Accept-Encoding", "identity");
   http.addHeader("Connection", "close");
@@ -456,7 +697,7 @@ static bool fetchNearestFlight(FlightInfo &out) {
   // closest endpoint returns only one aircraft, but keep minimal fields
   acObj["seen_pos"] = true;
 
-  DynamicJsonDocument doc(8192); // ~8KB; filtered and single-aircraft
+  DynamicJsonDocument doc(8192);  // ~8KB; filtered and single-aircraft
   // Prefer streamed parsing to minimize RAM and fragmentation
   DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
   http.end();
@@ -478,80 +719,7 @@ static bool fetchNearestFlight(FlightInfo &out) {
   return false;
 }
 
-// Apply a provided JSON payload (same schema as /v2/closest) to update display
-static bool applyClosestJson(const char* json, size_t len, FlightInfo &out) {
-  if (!json || len == 0) return false;
-  // Build a filter to only keep what we need
-  StaticJsonDocument<256> filter;
-  JsonArray acArr = filter.createNestedArray("ac");
-  JsonObject acObj = acArr.createNestedObject();
-  acObj["flight"] = true;
-  acObj["r"] = true;
-  acObj["hex"] = true;
-  acObj["t"] = true;
-  acObj["type"] = true;
-  acObj["alt_baro"] = true;
-  acObj["lat"] = true;
-  acObj["lon"] = true;
-  acObj["seen_pos"] = true;
-
-  DynamicJsonDocument doc(8192);
-  DeserializationError err = deserializeJson(doc, json, len, DeserializationOption::Filter(filter));
-  if (err) {
-    LOG_WARN("TEST JSON parse error: %s", err.c_str());
-    return false;
-  }
-  FlightInfo closest = parseClosest(doc.as<JsonVariant>());
-  if (!closest.valid) return false;
-  closest.opClass = classifyOp(closest);
-  out = closest;
-  return true;
-}
-
-static void handleTestClosestPut() {
-  // Expect application/json body matching /v2/closest response
-  if (!g_server.hasArg("plain")) {
-    g_server.send(400, "text/plain", "Missing body");
-    return;
-  }
-  String body = g_server.arg("plain");
-  LOG_INFO("TEST PUT /test/closest bytes: %d", body.length());
-  FlightInfo fi;
-  // Try simple schema first
-  {
-    StaticJsonDocument<1024> doc;
-    DeserializationError err = deserializeJson(doc, body);
-    if (!err && doc.is<JsonObject>() && !doc.containsKey("ac")) {
-      JsonObject o = doc.as<JsonObject>();
-      String code;
-      if (o["t"]) code = String(o["t"].as<const char*>());
-      else if (o["type"]) code = String(o["type"].as<const char*>());
-      code.trim();
-      if (code.length() > 0) {
-        fi.valid = true;
-        fi.typeCode = code;
-        fi.ident = o["ident"].isNull() ? code : String(o["ident"].as<const char*>());
-        fi.altitudeFt = o["alt"].isNull() ? -1 : (long)o["alt"].as<long>();
-        fi.distanceKm = o["dist"].isNull() ? NAN : o["dist"].as<double>();
-        if (!o["op"].isNull()) { fi.opClass = String(o["op"].as<const char*>()); fi.opClass.trim(); fi.opClass.toUpperCase(); }
-        if (!o["seats"].isNull()) { int s = o["seats"].as<int>(); if (s > 0) fi.seatOverride = s; }
-      }
-    }
-  }
-  // If not valid, fall back to full /v2/closest schema
-  if (!fi.valid) {
-    if (!applyClosestJson(body.c_str(), body.length(), fi)) {
-      g_server.send(400, "text/plain", "Invalid JSON");
-      return;
-    }
-  }
-  // Render and update relays immediately
-  renderFlight(fi);
-  g_lastShown = fi;
-  g_haveDisplayed = true;
-  updateRelaysForState(true, fi.opClass, false);
-  g_server.send(200, "application/json", String("{\"status\":\"ok\",\"ident\":\"") + fi.ident + "\"}");
-}
+// test server removed
 
 static void renderFlight(const FlightInfo &fi) {
   u8g2.clearBuffer();
@@ -561,26 +729,37 @@ static void renderFlight(const FlightInfo &fi) {
   String friendly = fi.typeCode.length() ? aircraftFriendlyName(fi.typeCode) : String("");
   // Detect pseudo/non-aircraft types to avoid showing raw codes
   bool isPseudo = false;
-  String codeUC = fi.typeCode; codeUC.trim(); codeUC.toUpperCase();
+  String codeUC = fi.typeCode;
+  codeUC.trim();
+  codeUC.toUpperCase();
   if (!friendly.length() && codeUC.length()) {
-    if (codeUC.startsWith("TISB")) { friendly = "TIS-B Target"; isPseudo = true; }
-    else if (codeUC.startsWith("ADSB")) { friendly = "ADS-B Target"; isPseudo = true; }
-    else if (codeUC.startsWith("MLAT")) { friendly = "MLAT Target"; isPseudo = true; }
-    else if (codeUC.startsWith("MODE")) { friendly = "Mode-S Target"; isPseudo = true; }
+    if (codeUC.startsWith("TISB")) {
+      friendly = "TIS-B Target";
+      isPseudo = true;
+    } else if (codeUC.startsWith("ADSB")) {
+      friendly = "ADS-B Target";
+      isPseudo = true;
+    } else if (codeUC.startsWith("MLAT")) {
+      friendly = "MLAT Target";
+      isPseudo = true;
+    } else if (codeUC.startsWith("MODE")) {
+      friendly = "Mode-S Target";
+      isPseudo = true;
+    }
   }
   if (!friendly.length()) friendly = String("Unknown Aircraft");
 
   // Bottom metrics font (~50% larger than before)
-  const uint8_t* bottomFont = u8g2_font_9x18_tf; // was 6x12
+  const uint8_t *bottomFont = u8g2_font_9x18_tf;  // was 6x12
   u8g2.setFont(bottomFont);
   int16_t bottomAscent = u8g2.getAscent();
   int16_t bottomDescent = -u8g2.getDescent();
   int16_t bottomH = bottomAscent + bottomDescent;
-  const int16_t gapTopBottom = 2; // minimal gap above bottom line
+  const int16_t gapTopBottom = 2;  // minimal gap above bottom line
   const int16_t topAvail = SCREEN_HEIGHT - bottomH - gapTopBottom;
 
   // Title fonts from largest to smaller; allow wrapping to up to 2 lines
-  const uint8_t* titleFonts[] = {
+  const uint8_t *titleFonts[] = {
     u8g2_font_logisoso32_tf,
     u8g2_font_logisoso24_tf,
     u8g2_font_logisoso20_tf,
@@ -588,15 +767,17 @@ static void renderFlight(const FlightInfo &fi) {
     u8g2_font_9x15_tf,
     u8g2_font_6x12_tf
   };
-  const size_t NFONTS = sizeof(titleFonts)/sizeof(titleFonts[0]);
+  const size_t NFONTS = sizeof(titleFonts) / sizeof(titleFonts[0]);
 
   String line1 = friendly;
   String line2 = String("");
-  const uint8_t* chosen = titleFonts[NFONTS - 1];
+  const uint8_t *chosen = titleFonts[NFONTS - 1];
   auto tryWrapTwoLines = [&](const String &s, String &o1, String &o2) -> bool {
     // Attempt to split at spaces; choose split minimizing max line width and fitting within width
-    o1 = s; o2 = String("");
-    int bestIdx = -1; int bestWorst = INT_MAX;
+    o1 = s;
+    o2 = String("");
+    int bestIdx = -1;
+    int bestWorst = INT_MAX;
     for (int i = 1; i < (int)s.length() - 1; ++i) {
       if (s[i] != ' ') continue;
       String a = s.substring(0, i);
@@ -605,7 +786,12 @@ static void renderFlight(const FlightInfo &fi) {
       uint16_t wb = u8g2.getUTF8Width(b.c_str());
       if (wa <= SCREEN_WIDTH && wb <= SCREEN_WIDTH) {
         int worst = max((int)wa, (int)wb);
-        if (worst < bestWorst) { bestWorst = worst; bestIdx = i; o1 = a; o2 = b; }
+        if (worst < bestWorst) {
+          bestWorst = worst;
+          bestIdx = i;
+          o1 = a;
+          o2 = b;
+        }
       }
     }
     return bestIdx >= 0;
@@ -619,7 +805,8 @@ static void renderFlight(const FlightInfo &fi) {
     // One-line fit within width and height
     if (u8g2.getUTF8Width(friendly.c_str()) <= SCREEN_WIDTH && lh <= topAvail) {
       chosen = titleFonts[i];
-      line1 = friendly; line2 = String("");
+      line1 = friendly;
+      line2 = String("");
       break;
     }
     // Try two-line wrap for this font if two lines fit height
@@ -627,7 +814,8 @@ static void renderFlight(const FlightInfo &fi) {
       String a, b;
       if (tryWrapTwoLines(friendly, a, b)) {
         chosen = titleFonts[i];
-        line1 = a; line2 = b;
+        line1 = a;
+        line2 = b;
         break;
       }
     }
@@ -639,7 +827,7 @@ static void renderFlight(const FlightInfo &fi) {
   int16_t descT = -u8g2.getDescent();
   int16_t lhT = ascT + descT;
   int16_t totalTitleH = lhT + ((line2.length() > 0) ? (2 + lhT) : 0);
-  if (totalTitleH > topAvail) totalTitleH = topAvail; // safety
+  if (totalTitleH > topAvail) totalTitleH = topAvail;  // safety
   int16_t yStart = (topAvail - totalTitleH) / 2 + ascT;
   drawCentered(line1, yStart);
   if (line2.length() > 0) {
@@ -652,7 +840,7 @@ static void renderFlight(const FlightInfo &fi) {
   int16_t yBottom = SCREEN_HEIGHT - 1 - (descent < 0 ? -descent : descent);
 
   String distStr = String("—");
-  if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + " km";
+  if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + "km";
 
   uint16_t maxSeats = 0;
   String seatsStr = String("—");
@@ -662,11 +850,11 @@ static void renderFlight(const FlightInfo &fi) {
   }
 
   String altStr = String("—");
-  if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
+  if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + "ft";
 
   const int cells = 3;
   const int cellW = SCREEN_WIDTH / cells;
-  auto drawCenteredInCell = [&](int idx, const String &text){
+  auto drawCenteredInCell = [&](int idx, const String &text) {
     uint16_t bw = u8g2.getUTF8Width(text.c_str());
     int16_t cx = idx * cellW + (cellW - (int)bw) / 2;
     if (cx < 0) cx = 0;
@@ -681,20 +869,10 @@ static void renderFlight(const FlightInfo &fi) {
 }
 
 void setup() {
-  // Preload inactive output level before switching to OUTPUT to avoid glitches
+  // Initialize all unique relay role pins to inactive (OFF)
   const int INACTIVE = (RELAY_ACTIVE_HIGH ? LOW : HIGH);
-  digitalWrite(RELAY_IN1_PIN, INACTIVE);
-  digitalWrite(RELAY_IN2_PIN, INACTIVE);
-  digitalWrite(RELAY_IN3_PIN, INACTIVE);
-  digitalWrite(RELAY_IN4_PIN, INACTIVE);
-  if (RELAY_IN1_PIN >= 0) pinMode(RELAY_IN1_PIN, OUTPUT);
-  if (RELAY_IN2_PIN >= 0) pinMode(RELAY_IN2_PIN, OUTPUT);
-  if (RELAY_IN3_PIN >= 0) pinMode(RELAY_IN3_PIN, OUTPUT);
-  if (RELAY_IN4_PIN >= 0) pinMode(RELAY_IN4_PIN, OUTPUT);
-  if (RELAY_IN1_PIN >= 0) digitalWrite(RELAY_IN1_PIN, INACTIVE);
-  if (RELAY_IN2_PIN >= 0) digitalWrite(RELAY_IN2_PIN, INACTIVE);
-  if (RELAY_IN3_PIN >= 0) digitalWrite(RELAY_IN3_PIN, INACTIVE);
-  if (RELAY_IN4_PIN >= 0) digitalWrite(RELAY_IN4_PIN, INACTIVE);
+  // Simple, explicit relay init and boot state
+  relaysInit();
 
   Serial.begin(115200);
   delay(20);
@@ -704,36 +882,47 @@ void setup() {
   Serial.print(F("[Boot] Reset reason: "));
   switch (rr) {
     case ESP_RST_POWERON: Serial.println(F("POWERON")); break;
-    case ESP_RST_EXT:     Serial.println(F("EXT")); break;
-    case ESP_RST_SW:      Serial.println(F("SW")); break;
-    case ESP_RST_PANIC:   Serial.println(F("PANIC")); break;
+    case ESP_RST_EXT: Serial.println(F("EXT")); break;
+    case ESP_RST_SW: Serial.println(F("SW")); break;
+    case ESP_RST_PANIC: Serial.println(F("PANIC")); break;
     case ESP_RST_INT_WDT: Serial.println(F("INT_WDT")); break;
-    case ESP_RST_TASK_WDT:Serial.println(F("TASK_WDT")); break;
-    case ESP_RST_WDT:     Serial.println(F("WDT")); break;
+    case ESP_RST_TASK_WDT: Serial.println(F("TASK_WDT")); break;
+    case ESP_RST_WDT: Serial.println(F("WDT")); break;
     case ESP_RST_DEEPSLEEP: Serial.println(F("DEEPSLEEP")); break;
     case ESP_RST_BROWNOUT: Serial.println(F("BROWNOUT")); break;
-    case ESP_RST_SDIO:    Serial.println(F("SDIO")); break;
-    default:              Serial.println((int)rr); break;
+    case ESP_RST_SDIO: Serial.println(F("SDIO")); break;
+    default: Serial.println((int)rr); break;
   }
 #endif
   // Wi‑Fi event logging and dynamic power management
-  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
-    switch(event) {
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    switch (event) {
       case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         LOG_WARN("WiFi disconnected. Reason: %d", info.wifi_sta_disconnected.reason);
         wifiConnecting = false;
         // Drop TX power while attempting to reconnect to reduce current spikes
         WiFi.setTxPower(WIFI_BOOT_TXPOWER);
         WiFi.setSleep(true);
+#if FEATURE_OTA
+        g_otaReady = false;
+        g_inOta = false;
+#endif
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        Serial.print(F("[WiFi] Got IP: ")); Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+        Serial.print(F("[WiFi] Got IP: "));
+        Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
         wifiConnecting = false;
         // Raise TX power after association; disable modem sleep for responsiveness
         WiFi.setTxPower(WIFI_RUN_TXPOWER);
         WiFi.setSleep(false);
         // Wi‑Fi up; print reminder of server endpoint
         Serial.println(F("[HTTP] Server ready on port 80"));
+#if FEATURE_OTA
+        otaBeginOnce();
+#endif
+#if FEATURE_TEST_ENDPOINT
+        httpStartOnce();
+#endif
         break;
       default: break;
     }
@@ -756,23 +945,51 @@ void setup() {
   delay(BOOT_POWER_SETTLE_MS);
   connectWiFi();
 
-  // Start HTTP test server regardless of Wi‑Fi state; it will accept once IP is assigned
-#if FEATURE_TEST_SERVER
-  g_server.on("/test/closest", HTTP_PUT, handleTestClosestPut);
-  g_server.onNotFound([](){ g_server.send(404, "text/plain", "Not Found"); });
-  g_server.begin();
-  Serial.println(F("[HTTP] Test server listening on /test/closest (PUT)"));
+#if FEATURE_TEST_ENDPOINT
+  // Start HTTP listener early; it will become reachable after Wi‑Fi is up
+  httpStartOnce();
 #endif
 }
 
 void loop() {
   static uint32_t lastFetch = 0;
-  static uint32_t lastBlink = 0;
-  static bool blinkPhase = false;
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
   }
+
+#if FEATURE_TEST_ENDPOINT
+  if (g_httpStarted) {
+    g_http.handleClient();
+  }
+#endif
+
+#if FEATURE_OTA
+  if (g_otaReady) {
+    ArduinoOTA.handle();
+  }
+  if (g_inOta) {
+    // Skip all other work during OTA to ensure smooth flashing
+    yield();
+    return;
+  }
+#endif
+
+  // If test override is active, render it preferentially
+#if FEATURE_TEST_ENDPOINT
+  if (g_test.active && (int32_t)(millis() - g_test.expiresAt) < 0) {
+    if (g_test.dirty || !g_haveDisplayed || !sameFlightDisplay(g_test.fi, g_lastShown)) {
+      renderFlight(g_test.fi);
+      g_lastShown = g_test.fi;
+      g_haveDisplayed = true;
+      relaysShowCategory(g_lastShown.opClass);
+      g_test.dirty = false;
+    }
+    // Skip network fetch while override active
+    yield();
+    return;
+  }
+#endif
 
   if (millis() - lastFetch >= FETCH_INTERVAL_MS || lastFetch == 0) {
     lastFetch = millis();
@@ -782,7 +999,7 @@ void loop() {
         renderFlight(nearest);
         g_lastShown = nearest;
         g_haveDisplayed = true;
-        updateRelaysForState(true, g_lastShown.opClass, false);
+        relaysShowCategory(g_lastShown.opClass);
       }
     } else {
       if (!g_haveDisplayed) {
@@ -791,19 +1008,10 @@ void loop() {
     }
   }
 
-  // Blink status relay until first display
+  // Keep relays consistent during boot
   if (!g_haveDisplayed) {
-    if (millis() - lastBlink >= 500) {
-      lastBlink = millis();
-      blinkPhase = !blinkPhase;
-      updateRelaysForState(false, String(), blinkPhase);
-    }
+    relaysPowerOnly();
   }
-
-  // Handle incoming HTTP requests for test endpoint
-#if FEATURE_TEST_SERVER
-  g_server.handleClient();
-#endif
 
   // Cooperative yield without blocking
   yield();
