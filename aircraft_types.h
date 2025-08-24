@@ -11,7 +11,7 @@ struct AircraftTypeInfo {
   const char* iata;  // may be empty
   const char* manufacturer;
   const char* model;
-  uint16_t maxSeats; // upper seat count only
+  uint16_t maxSeats;  // upper seat count only
 };
 
 static const AircraftTypeInfo kTypeInfo[] = {
@@ -31,7 +31,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   // Airbus A330/A340
   { "A332", "332", "Airbus", "A330-200", 260 },
   { "A333", "333", "Airbus", "A330-300", 300 },
-  { "A337", "",   "Airbus", "A330-700 BelugaXL", 0 },
+  { "A337", "", "Airbus", "A330-700 BelugaXL", 0 },
   { "A338", "338", "Airbus", "A330-800neo", 260 },
   { "A339", "339", "Airbus", "A330-900neo", 300 },
   { "A342", "342", "Airbus", "A340-200", 261 },
@@ -41,16 +41,16 @@ static const AircraftTypeInfo kTypeInfo[] = {
   // Airbus A350/A380
   { "A359", "359", "Airbus", "A350-900", 350 },
   { "A35K", "35K", "Airbus", "A350-1000", 410 },
-  { "A35F", "",   "Airbus", "A350F (pax eq.)", 0 },
+  { "A35F", "", "Airbus", "A350F (pax eq.)", 0 },
   { "A388", "388", "Airbus", "A380-800", 615 },
   // Airbus Regional/Older
   { "A300", "300", "Airbus", "A300", 300 },
   { "A30B", "30B", "Airbus", "A300-600", 300 },
   { "A306", "306", "Airbus", "A300-600R", 304 },
-  { "A300F", "",   "Airbus", "A300 Freighter (pax eq.)", 0 },
+  { "A300F", "", "Airbus", "A300 Freighter (pax eq.)", 0 },
   { "A310", "310", "Airbus", "A310", 220 },
-  { "A3ST", "",   "Airbus", "BelugaST", 5 },
-  { "A400", "",   "Airbus", "A400M Atlas", 0 },
+  { "A3ST", "", "Airbus", "BelugaST", 5 },
+  { "A400", "", "Airbus", "A400M Atlas", 0 },
 
   // Antonov
   { "A124", "", "Antonov", "An-124 Ruslan", 0 },
@@ -98,8 +98,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "B742", "742", "Boeing", "747-200", 452 },
   { "B743", "743", "Boeing", "747-300", 496 },
   { "B744", "744", "Boeing", "747-400", 524 },
-  { "B741F", "",   "Boeing", "747-100F (pax eq.)", 0 },
-  { "BLCF", "",    "Boeing", "747 LCF Dreamlifter", 8 },
+  { "B741F", "", "Boeing", "747-100F (pax eq.)", 0 },
+  { "BLCF", "", "Boeing", "747 LCF Dreamlifter", 8 },
   { "B748", "748", "Boeing", "747-8", 467 },
   { "B748", "74H", "Boeing", "747-8I", 467 },
   { "B748", "74N", "Boeing", "747-8F", 0 },
@@ -155,12 +155,12 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "E195", "E95", "Embraer", "E195", 132 },
   { "E290", "", "Embraer", "E190-E2", 120 },
   { "E295", "", "Embraer", "E195-E2", 146 },
-  
+
   // Additional GA, classic, bizjet, and utility types (from enriched set)
-  { "A10",  "", "Fairchild", "A-10", 0 },
-  { "A5",   "", "ICON", "A-5", 2 },
-  { "AA1",  "", "Grumman American", "AA-1", 2 },
-  { "AA5",  "", "Grumman American", "AA-5", 4 },
+  { "A10", "", "Fairchild", "A-10", 0 },
+  { "A5", "", "ICON", "A-5", 2 },
+  { "AA1", "", "Grumman American", "AA-1", 2 },
+  { "AA5", "", "Grumman American", "AA-5", 4 },
   { "AC11", "", "Rockwell", "Commander 112", 4 },
   { "AC50", "", "Aero Commander", "500", 6 },
   { "AC56", "", "Aero Commander", "560", 6 },
@@ -256,9 +256,9 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "G280", "", "Gulfstream", "G280", 10 },
   { "GA5C", "", "Gulfstream", "G500", 19 },
   { "GA6C", "", "Gulfstream", "G600", 19 },
-  { "GA7",  "", "Gulfstream American", "GA-7", 6 },
+  { "GA7", "", "Gulfstream American", "GA-7", 6 },
   { "GALX", "", "IAI/Gulfstream", "1126 Galaxy/G200", 10 },
-  { "GC1",  "", "Globe", "GC-1 Swift", 2 },
+  { "GC1", "", "Globe", "GC-1 Swift", 2 },
   { "H25A", "", "Hawker Siddeley", "HS-125 (early)", 8 },
   { "H25B", "", "BAe/Hawker", "HS-125/800", 8 },
   { "H25C", "", "BAe/Raytheon", "HS-125-1000", 8 },
@@ -267,9 +267,9 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "HUSK", "", "Aviat", "Husky", 2 },
   { "JS32", "", "BAe", "Jetstream 32", 19 },
   { "L29B", "", "Lockheed", "JetStar 2/731", 10 },
-  { "L5",   "", "Stinson", "L-5 Sentinel", 2 },
-  { "L8",   "", "Luscombe", "8", 2 },
-  { "LA4",  "", "Lake", "LA-4", 4 },
+  { "L5", "", "Stinson", "L-5 Sentinel", 2 },
+  { "L8", "", "Luscombe", "8", 2 },
+  { "LA4", "", "Lake", "LA-4", 4 },
   { "LJ23", "", "Learjet", "23", 6 },
   { "LJ24", "", "Learjet", "24", 6 },
   { "LJ25", "", "Learjet", "25", 8 },
@@ -282,19 +282,19 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "LJ75", "", "Learjet", "75", 9 },
   { "LNC4", "", "Lancair", "IV", 4 },
   { "LNP4", "", "Lancair", "PropJet IV", 4 },
-  { "M5",   "", "Maule", "M-5", 4 },
+  { "M5", "", "Maule", "M-5", 4 },
   { "M20T", "", "Mooney", "M20K/M20M", 4 },
   { "MU30", "", "Mitsubishi", "MU-300 Diamond", 8 },
   { "NAVI", "", "North American", "Navion", 4 },
   { "P210", "", "Cessna", "P210", 4 },
   { "P28B", "", "Piper", "Turbo Dakota", 4 },
   { "P28T", "", "Piper", "PA-28T Arrow IV", 4 },
-  { "P3",   "", "Lockheed", "P-3 Orion", 11 },
+  { "P3", "", "Lockheed", "P-3 Orion", 11 },
   { "P32R", "", "Piper", "PA-32R Lance/Saratoga", 6 },
   { "P32T", "", "Piper", "PA-32T Turbo Lance II", 6 },
   { "P46T", "", "Piper", "Malibu Meridian", 6 },
-  { "P51",  "", "North American", "P-51 Mustang", 1 },
-  { "P68",  "", "Vulcanair", "P68", 6 },
+  { "P51", "", "North American", "P-51 Mustang", 1 },
+  { "P68", "", "Vulcanair", "P68", 6 },
   { "P750", "", "Pacific Aerospace", "P-750 XSTOL", 10 },
   { "PA11", "", "Piper", "PA-11 Cub Special", 2 },
   { "PA12", "", "Piper", "PA-12 Super Cruiser", 3 },
@@ -320,17 +320,17 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "S22T", "", "Cirrus", "SR22 Turbo", 4 },
   { "SBR1", "", "Rockwell", "Sabre 40/60", 8 },
   { "SBR2", "", "Rockwell", "Sabre 75", 8 },
-  { "SW3",  "", "Fairchild Swearingen", "SA-226", 11 },
+  { "SW3", "", "Fairchild Swearingen", "SA-226", 11 },
   { "T210", "", "Cessna", "T210 Turbo Centurion", 6 },
-  { "T28",  "", "North American", "T-28 Trojan", 2 },
+  { "T28", "", "North American", "T-28 Trojan", 2 },
   { "T34P", "", "Beech", "T-34/45 Mentor", 2 },
-  { "T38",  "", "Northrop", "T-38 Talon", 2 },
-  { "T6",   "", "North American", "T-6 Texan", 2 },
+  { "T38", "", "Northrop", "T-38 Talon", 2 },
+  { "T6", "", "North American", "T-6 Texan", 2 },
   { "TAYB", "", "Taylorcraft", "BC", 2 },
   { "TB20", "", "Socata", "TB-20 Trinidad", 4 },
   { "TEX2", "", "Raytheon", "Texan II", 2 },
   { "TOBA", "", "Socata", "TB-10 Tobago", 4 },
-  { "V22",  "", "Bell-Boeing", "V-22 Osprey", 24 },
+  { "V22", "", "Bell-Boeing", "V-22 Osprey", 24 },
 
   // Canadair / Bombardier CRJ & Q400
   { "CRJ1", "CR1", "Bombardier", "CRJ100", 50 },
@@ -357,7 +357,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   // Commuters / Turboprops
   { "SF34", "SF3", "Saab", "340B", 36 },
   { "SB20", "S20", "Saab", "2000", 58 },
-  { "ATP",  "ATP", "BAe", "ATP", 72 },
+  { "ATP", "ATP", "BAe", "ATP", 72 },
   { "BE20", "", "Beechcraft", "Super King Air 200", 13 },
   { "BE30", "", "Beechcraft", "Super King Air 300/350", 11 },
   { "B190", "", "Beechcraft", "1900/1900D", 19 },
@@ -371,8 +371,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "F50", "", "Fokker", "50", 62 },
   { "F70", "F70", "Fokker", "70", 85 },
   { "F100", "100", "Fokker", "100", 109 },
-  { "F27",  "F27", "Fokker", "F27 Friendship", 56 },
-  { "F28",  "F21", "Fokker", "F28 Fellowship", 85 },
+  { "F27", "F27", "Fokker", "F27 Friendship", 56 },
+  { "F28", "F21", "Fokker", "F28 Fellowship", 85 },
   { "YS11", "", "NAMC", "YS-11", 64 },
   { "A748", "HS7", "Hawker Siddeley", "HS 748", 60 },
   { "BA11", "", "British Aerospace", "BAe 146-100", 82 },
@@ -390,11 +390,11 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "AJ27", "C27", "Comac", "ARJ21-700", 90 },
   { "SU95", "SU9", "Sukhoi", "Superjet 100", 108 },
   { "MRJ9", "M90", "Mitsubishi", "SpaceJet M90", 92 },
-  { "C919", "",   "Comac", "C919", 174 },
-  { "E135", "",   "Embraer", "ERJ 135", 37 },
-  { "E140", "",   "Embraer", "ERJ 140", 44 },
-  { "E145", "",   "Embraer", "ERJ 145", 50 },
-  { "E45X", "",   "Embraer", "ERJ 145XR", 50 },
+  { "C919", "", "Comac", "C919", 174 },
+  { "E135", "", "Embraer", "ERJ 135", 37 },
+  { "E140", "", "Embraer", "ERJ 140", 44 },
+  { "E145", "", "Embraer", "ERJ 145", 50 },
+  { "E45X", "", "Embraer", "ERJ 145XR", 50 },
 
   // Bizjets (common)
   { "C25A", "", "Cessna", "CJ2", 8 },
@@ -408,8 +408,8 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "E50P", "", "Embraer", "Phenom 100", 6 },
   { "E55P", "", "Embraer", "Phenom 300", 9 },
   { "E35L", "ER3", "Embraer", "Legacy 600/650", 16 },
-  { "E545", "",  "Embraer", "Legacy 450 / Praetor 500", 9 },
-  { "E550", "",  "Embraer", "Legacy 500 / Praetor 600", 12 },
+  { "E545", "", "Embraer", "Legacy 450 / Praetor 500", 9 },
+  { "E550", "", "Embraer", "Legacy 500 / Praetor 600", 12 },
   { "FA50", "", "Dassault", "Falcon 50", 9 },
   { "F2TH", "", "Dassault", "Falcon 2000", 12 },
   { "FA7X", "", "Dassault", "Falcon 7X", 16 },
@@ -493,16 +493,16 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "A189", "", "AgustaWestland", "AW189", 19 },
   { "S76", "", "Sikorsky", "S-76", 13 },
   { "S92", "", "Sikorsky", "S-92", 19 },
-  { "MI8",  "", "Mil", "Mi-8/17 Hip", 36 },
+  { "MI8", "", "Mil", "Mi-8/17 Hip", 36 },
   { "KA32", "", "Kamov", "Ka-32", 16 },
   { "K35R", "K35", "Boeing", "KC-135 Stratotanker", 0 },
-  { "Y12",  "YN2", "Harbin", "Y-12", 19 },
+  { "Y12", "YN2", "Harbin", "Y-12", 19 },
   { "YK40", "YK4", "Yakovlev", "Yak-40", 32 },
   { "YK42", "YK2", "Yakovlev", "Yak-42", 120 },
-  { "SC7",  "SHS", "Shorts", "SC-7 Skyvan", 19 },
+  { "SC7", "SHS", "Shorts", "SC-7 Skyvan", 19 },
   { "SH33", "SH3", "Shorts", "SD-330", 36 },
   { "SH36", "SH6", "Shorts", "SD-360", 40 },
-  { "SW4",  "SW4", "Swearingen", "Metroliner", 19 },
+  { "SW4", "SW4", "Swearingen", "Metroliner", 19 },
   { "BELF", "SHB", "Shorts", "SC-5 Belfast", 43 },
 
   // Seaplanes and bush
@@ -528,28 +528,28 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "B2", "", "Northrop Grumman", "B-2 Spirit", 2 },
   { "B52", "", "Boeing", "B-52 Stratofortress", 8 },
   { "C17", "", "Boeing", "C-17 Globemaster III", 170 },
-  { "C5",  "", "Lockheed Martin", "C-5 Galaxy", 345 },
+  { "C5", "", "Lockheed Martin", "C-5 Galaxy", 345 },
   { "C5M", "", "Lockheed Martin", "C-5M Super Galaxy", 345 },
   { "C130", "", "Lockheed Martin", "C-130 Hercules", 92 },
   { "C30J", "", "Lockheed Martin", "C-130J Hercules", 92 },
   { "KC10", "", "McDonnell Douglas", "KC-10 Extender", 75 },
   { "KC46", "", "Boeing", "KC-46 Pegasus", 65 },
-  { "P8",   "", "Boeing", "P-8 Poseidon", 11 },
+  { "P8", "", "Boeing", "P-8 Poseidon", 11 },
   { "E3TF", "", "Boeing", "E-3 Sentry AWACS", 19 },
-  { "E7",   "", "Boeing", "E-7 Wedgetail", 12 },
+  { "E7", "", "Boeing", "E-7 Wedgetail", 12 },
   { "C27J", "", "Leonardo", "C-27J Spartan", 60 },
   { "CN35", "", "Airbus Military", "CN-235", 45 },
   { "C295", "", "Airbus Military", "C-295", 71 },
   { "T154", "T54", "Tupolev", "Tu-154", 180 },
   { "T134", "TU3", "Tupolev", "Tu-134", 84 },
   { "T204", "T20", "Tupolev", "Tu-204/214", 210 },
-  { "IL18",  "IL8", "Ilyushin", "Il-18", 120 },
-  { "IL62",  "IL6", "Ilyushin", "Il-62", 192 },
-  { "IL76",  "IL7", "Ilyushin", "Il-76", 0 },
-  { "IL86",  "ILW", "Ilyushin", "Il-86", 350 },
-  { "IL96",  "I93", "Ilyushin", "Il-96", 300 },
-  { "AN148", "",   "Antonov", "An-148", 85 },
-  { "AN158", "",   "Antonov", "An-158", 99 },
+  { "IL18", "IL8", "Ilyushin", "Il-18", 120 },
+  { "IL62", "IL6", "Ilyushin", "Il-62", 192 },
+  { "IL76", "IL7", "Ilyushin", "Il-76", 0 },
+  { "IL86", "ILW", "Ilyushin", "Il-86", 350 },
+  { "IL96", "I93", "Ilyushin", "Il-96", 300 },
+  { "AN148", "", "Antonov", "An-148", 85 },
+  { "AN158", "", "Antonov", "An-158", 99 },
   { "EUFI", "", "Eurofighter", "Typhoon", 2 },
   { "WW24", "WWP", "IAI", "1124 Westwind", 10 },
 
@@ -576,7 +576,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "E295", "", "Embraer", "E195-E2", 146 },
 };
 
-#if 0  // Lightweight table removed to reduce flash; using rich table only
+#if 0   // Lightweight table removed to reduce flash; using rich table only
 struct AircraftTypeName {
   const char* icao;
   const char* name;
@@ -1043,7 +1043,7 @@ static const AircraftTypeName kAircraftTypes[] = {
   { "C130", "C-130 Hercules" },
   { "EUFI", "Eurofighter Typhoon" },
 };
-#endif // OMIT kAircraftTypes
+#endif  // OMIT kAircraftTypes
 
 // --- Lookup helpers ---
 
@@ -1063,103 +1063,370 @@ inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
   if (!icao || !*icao) return false;
   // Direct match against rich table first (max only)
   for (size_t i = 0; i < sizeof(kTypeInfo) / sizeof(kTypeInfo[0]); ++i) {
-    if (strcasecmp(icao, kTypeInfo[i].icao) == 0) { maxOut = kTypeInfo[i].maxSeats; return true; }
+    if (strcasecmp(icao, kTypeInfo[i].icao) == 0) {
+      maxOut = kTypeInfo[i].maxSeats;
+      return true;
+    }
   }
   // Family heuristics (max only)
-  if (strncasecmp(icao, "A31", 3) == 0 || strncasecmp(icao, "A32", 3) == 0) { maxOut = 244; return true; }
-  if (strncasecmp(icao, "B70", 3) == 0) { maxOut = 189; return true; } // 707
-  if (strncasecmp(icao, "B72", 3) == 0) { maxOut = 189; return true; } // 727
-  if (strncasecmp(icao, "B73", 3) == 0) { maxOut = 230; return true; } // 737
-  if (strncasecmp(icao, "B78", 3) == 0) { maxOut = 330; return true; } // 787
-  if (strncasecmp(icao, "E17", 3) == 0 || strncasecmp(icao, "E19", 3) == 0 || strncasecmp(icao, "E29", 3) == 0 || strncasecmp(icao, "E75", 3) == 0) { maxOut = 146; return true; }
-  if (strncasecmp(icao, "CRJ", 3) == 0) { maxOut = 104; return true; }
-  if (strncasecmp(icao, "AT4", 3) == 0 || strncasecmp(icao, "AT7", 3) == 0) { maxOut = 78; return true; }
-  if (strncasecmp(icao, "DH8", 3) == 0) { maxOut = 90; return true; }
-  if (strncasecmp(icao, "DH2", 3) == 0) { maxOut = 7; return true; }
-  if (strncasecmp(icao, "TISB", 4) == 0) { maxOut = 6; return true; }
+  if (strncasecmp(icao, "A31", 3) == 0 || strncasecmp(icao, "A32", 3) == 0) {
+    maxOut = 244;
+    return true;
+  }
+  if (strncasecmp(icao, "B70", 3) == 0) {
+    maxOut = 189;
+    return true;
+  }  // 707
+  if (strncasecmp(icao, "B72", 3) == 0) {
+    maxOut = 189;
+    return true;
+  }  // 727
+  if (strncasecmp(icao, "B73", 3) == 0) {
+    maxOut = 230;
+    return true;
+  }  // 737
+  if (strncasecmp(icao, "B78", 3) == 0) {
+    maxOut = 330;
+    return true;
+  }  // 787
+  if (strncasecmp(icao, "E17", 3) == 0 || strncasecmp(icao, "E19", 3) == 0 || strncasecmp(icao, "E29", 3) == 0 || strncasecmp(icao, "E75", 3) == 0) {
+    maxOut = 146;
+    return true;
+  }
+  if (strncasecmp(icao, "CRJ", 3) == 0) {
+    maxOut = 104;
+    return true;
+  }
+  if (strncasecmp(icao, "AT4", 3) == 0 || strncasecmp(icao, "AT7", 3) == 0) {
+    maxOut = 78;
+    return true;
+  }
+  if (strncasecmp(icao, "DH8", 3) == 0) {
+    maxOut = 90;
+    return true;
+  }
+  if (strncasecmp(icao, "DH2", 3) == 0) {
+    maxOut = 7;
+    return true;
+  }
+  if (strncasecmp(icao, "TISB", 4) == 0) {
+    maxOut = 6;
+    return true;
+  }
   // GA and bizjet heuristics
-  if (strncasecmp(icao, "BE33", 4) == 0 || strncasecmp(icao, "BE35", 4) == 0 || strncasecmp(icao, "BE36", 4) == 0) { maxOut = 4; return true; }
-  if (strncasecmp(icao, "BE55", 4) == 0 || strncasecmp(icao, "BE56", 4) == 0 || strncasecmp(icao, "BE58", 4) == 0) { maxOut = 6; return true; }
-  if (strncasecmp(icao, "BE76", 4) == 0 || strncasecmp(icao, "BE77", 4) == 0 || strncasecmp(icao, "BE80", 4) == 0 || strncasecmp(icao, "BE95", 4) == 0) { maxOut = 4; return true; }
-  if (strncasecmp(icao, "BE9", 3) == 0 || strncasecmp(icao, "BE10", 4) == 0) { maxOut = 9; return true; } // King Air 90/100
-  if (strcasecmp(icao, "B350") == 0) { maxOut = 11; return true; }
-  if (strncasecmp(icao, "LJ", 2) == 0) { maxOut = 9; return true; } // Learjet family approx
-  if (strcasecmp(icao, "PRM1") == 0) { maxOut = 6; return true; } // Premier I
-  if (strcasecmp(icao, "GALX") == 0) { maxOut = 10; return true; } // G200
-  if (strcasecmp(icao, "MU30") == 0) { maxOut = 8; return true; }
-  if (strcasecmp(icao, "H25A") == 0 || strcasecmp(icao, "H25B") == 0 || strcasecmp(icao, "H25C") == 0) { maxOut = 8; return true; }
-  if (strcasecmp(icao, "FA10") == 0) { maxOut = 8; return true; }
-  if (strcasecmp(icao, "FA20") == 0) { maxOut = 12; return true; }
-  if (strcasecmp(icao, "FA8X") == 0) { maxOut = 19; return true; }
+  if (strncasecmp(icao, "BE33", 4) == 0 || strncasecmp(icao, "BE35", 4) == 0 || strncasecmp(icao, "BE36", 4) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "BE55", 4) == 0 || strncasecmp(icao, "BE56", 4) == 0 || strncasecmp(icao, "BE58", 4) == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strncasecmp(icao, "BE76", 4) == 0 || strncasecmp(icao, "BE77", 4) == 0 || strncasecmp(icao, "BE80", 4) == 0 || strncasecmp(icao, "BE95", 4) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "BE9", 3) == 0 || strncasecmp(icao, "BE10", 4) == 0) {
+    maxOut = 9;
+    return true;
+  }  // King Air 90/100
+  if (strcasecmp(icao, "B350") == 0) {
+    maxOut = 11;
+    return true;
+  }
+  if (strncasecmp(icao, "LJ", 2) == 0) {
+    maxOut = 9;
+    return true;
+  }  // Learjet family approx
+  if (strcasecmp(icao, "PRM1") == 0) {
+    maxOut = 6;
+    return true;
+  }  // Premier I
+  if (strcasecmp(icao, "GALX") == 0) {
+    maxOut = 10;
+    return true;
+  }  // G200
+  if (strcasecmp(icao, "MU30") == 0) {
+    maxOut = 8;
+    return true;
+  }
+  if (strcasecmp(icao, "H25A") == 0 || strcasecmp(icao, "H25B") == 0 || strcasecmp(icao, "H25C") == 0) {
+    maxOut = 8;
+    return true;
+  }
+  if (strcasecmp(icao, "FA10") == 0) {
+    maxOut = 8;
+    return true;
+  }
+  if (strcasecmp(icao, "FA20") == 0) {
+    maxOut = 12;
+    return true;
+  }
+  if (strcasecmp(icao, "FA8X") == 0) {
+    maxOut = 19;
+    return true;
+  }
   // Cessna singles/twins
-  if (strcasecmp(icao, "C120") == 0 || strcasecmp(icao, "C140") == 0) { maxOut = 2; return true; }
-  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C15", 3) == 0 || strncasecmp(icao, "C19", 3) == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "C180") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "C185") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "C188") == 0) { maxOut = 1; return true; }
-  if (strcasecmp(icao, "C195") == 0) { maxOut = 5; return true; }
-  if (strcasecmp(icao, "C210") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "C310") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "C320") == 0 || strcasecmp(icao, "C335") == 0 || strcasecmp(icao, "C340") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "C402") == 0 || strcasecmp(icao, "C404") == 0) { maxOut = 10; return true; }
-  if (strcasecmp(icao, "C414") == 0 || strcasecmp(icao, "C421") == 0) { maxOut = 8; return true; }
-  if (strcasecmp(icao, "C425") == 0) { maxOut = 7; return true; }
-  if (strcasecmp(icao, "C441") == 0) { maxOut = 9; return true; }
+  if (strcasecmp(icao, "C120") == 0 || strcasecmp(icao, "C140") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C15", 3) == 0 || strncasecmp(icao, "C19", 3) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "C180") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "C185") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "C188") == 0) {
+    maxOut = 1;
+    return true;
+  }
+  if (strcasecmp(icao, "C195") == 0) {
+    maxOut = 5;
+    return true;
+  }
+  if (strcasecmp(icao, "C210") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "C310") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "C320") == 0 || strcasecmp(icao, "C335") == 0 || strcasecmp(icao, "C340") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "C402") == 0 || strcasecmp(icao, "C404") == 0) {
+    maxOut = 10;
+    return true;
+  }
+  if (strcasecmp(icao, "C414") == 0 || strcasecmp(icao, "C421") == 0) {
+    maxOut = 8;
+    return true;
+  }
+  if (strcasecmp(icao, "C425") == 0) {
+    maxOut = 7;
+    return true;
+  }
+  if (strcasecmp(icao, "C441") == 0) {
+    maxOut = 9;
+    return true;
+  }
   // Piper singles/twins
-  if (strcasecmp(icao, "PA11") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "PA12") == 0) { maxOut = 3; return true; }
-  if (strcasecmp(icao, "PA16") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "PA18") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "PA20") == 0 || strcasecmp(icao, "PA22") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "PA23") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "PA24") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "PA25") == 0) { maxOut = 1; return true; }
-  if (strcasecmp(icao, "PA27") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "PA30") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "PA32") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "PA36") == 0) { maxOut = 1; return true; }
-  if (strcasecmp(icao, "PA38") == 0) { maxOut = 2; return true; }
+  if (strcasecmp(icao, "PA11") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "PA12") == 0) {
+    maxOut = 3;
+    return true;
+  }
+  if (strcasecmp(icao, "PA16") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "PA18") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "PA20") == 0 || strcasecmp(icao, "PA22") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "PA23") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "PA24") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "PA25") == 0) {
+    maxOut = 1;
+    return true;
+  }
+  if (strcasecmp(icao, "PA27") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "PA30") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "PA32") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "PA36") == 0) {
+    maxOut = 1;
+    return true;
+  }
+  if (strcasecmp(icao, "PA38") == 0) {
+    maxOut = 2;
+    return true;
+  }
   // Light sport / experimental, classics
-  if (strcasecmp(icao, "FDCT") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "ERCO") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "CH7A") == 0 || strcasecmp(icao, "CH7B") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "CRUZ") == 0) { maxOut = 2; return true; }
-  if (strcasecmp(icao, "LNC4") == 0 || strcasecmp(icao, "LNP4") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "EVOT") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "G164") == 0) { maxOut = 1; return true; }
+  if (strcasecmp(icao, "FDCT") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "ERCO") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "CH7A") == 0 || strcasecmp(icao, "CH7B") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "CRUZ") == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strcasecmp(icao, "LNC4") == 0 || strcasecmp(icao, "LNP4") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "EVOT") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "G164") == 0) {
+    maxOut = 1;
+    return true;
+  }
   // Transports and classics
-  if (strcasecmp(icao, "DC3") == 0) { maxOut = 32; return true; }
-  if (strcasecmp(icao, "DC3T") == 0) { maxOut = 18; return true; }
-  if (strcasecmp(icao, "DC6") == 0) { maxOut = 100; return true; }
-  if (strcasecmp(icao, "CVLP") == 0) { maxOut = 86; return true; }
-  if (strcasecmp(icao, "JS32") == 0) { maxOut = 19; return true; }
-  if (strcasecmp(icao, "C212") == 0) { maxOut = 26; return true; }
-  if (strcasecmp(icao, "P750") == 0) { maxOut = 10; return true; }
-  if (strcasecmp(icao, "P68") == 0) { maxOut = 6; return true; }
-  if (strcasecmp(icao, "P3") == 0) { maxOut = 11; return true; }
-  if (strcasecmp(icao, "V22") == 0) { maxOut = 24; return true; }
-  if (strncasecmp(icao, "BA1", 3) == 0) { maxOut = 116; return true; } // BAe 146
-  if (strncasecmp(icao, "YS1", 3) == 0) { maxOut = 64; return true; }
-  if (strncasecmp(icao, "C91", 3) == 0) { maxOut = 174; return true; } // C919
-  if (strcasecmp(icao, "C208") == 0 || strcasecmp(icao, "C208A") == 0) { maxOut = 12; return true; }
-  if (strcasecmp(icao, "R44") == 0) { maxOut = 4; return true; }
-  if (strcasecmp(icao, "A139") == 0) { maxOut = 15; return true; }
+  if (strcasecmp(icao, "DC3") == 0) {
+    maxOut = 32;
+    return true;
+  }
+  if (strcasecmp(icao, "DC3T") == 0) {
+    maxOut = 18;
+    return true;
+  }
+  if (strcasecmp(icao, "DC6") == 0) {
+    maxOut = 100;
+    return true;
+  }
+  if (strcasecmp(icao, "CVLP") == 0) {
+    maxOut = 86;
+    return true;
+  }
+  if (strcasecmp(icao, "JS32") == 0) {
+    maxOut = 19;
+    return true;
+  }
+  if (strcasecmp(icao, "C212") == 0) {
+    maxOut = 26;
+    return true;
+  }
+  if (strcasecmp(icao, "P750") == 0) {
+    maxOut = 10;
+    return true;
+  }
+  if (strcasecmp(icao, "P68") == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strcasecmp(icao, "P3") == 0) {
+    maxOut = 11;
+    return true;
+  }
+  if (strcasecmp(icao, "V22") == 0) {
+    maxOut = 24;
+    return true;
+  }
+  if (strncasecmp(icao, "BA1", 3) == 0) {
+    maxOut = 116;
+    return true;
+  }  // BAe 146
+  if (strncasecmp(icao, "YS1", 3) == 0) {
+    maxOut = 64;
+    return true;
+  }
+  if (strncasecmp(icao, "C91", 3) == 0) {
+    maxOut = 174;
+    return true;
+  }  // C919
+  if (strcasecmp(icao, "C208") == 0 || strcasecmp(icao, "C208A") == 0) {
+    maxOut = 12;
+    return true;
+  }
+  if (strcasecmp(icao, "R44") == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strcasecmp(icao, "A139") == 0) {
+    maxOut = 15;
+    return true;
+  }
   // GA broad defaults (optional)
-  if (strncasecmp(icao, "PA28", 4) == 0) { maxOut=4; return true; }
-  if (strncasecmp(icao, "PA31", 4) == 0) { maxOut=10; return true; }
-  if (strncasecmp(icao, "PA34", 4) == 0) { maxOut=6; return true; }
-  if (strncasecmp(icao, "PA44", 4) == 0) { maxOut=4; return true; }
-  if (strncasecmp(icao, "PA46", 4) == 0 || strncasecmp(icao, "P46T", 4) == 0) { maxOut=6; return true; }
-  if (strncasecmp(icao, "C15", 3) == 0) { maxOut=2; return true; }
-  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C18", 3) == 0) { maxOut=4; return true; }
-  if (strncasecmp(icao, "C19", 3) == 0) { maxOut=6; return true; }
-  if (strncasecmp(icao, "C20", 3) == 0 || strncasecmp(icao, "T20", 3) == 0 || strncasecmp(icao, "U20", 3) == 0 || strncasecmp(icao, "P20", 3) == 0) { maxOut=7; return true; }
-  if (strncasecmp(icao, "C40", 3) == 0 || strncasecmp(icao, "C35", 3) == 0) { maxOut=4; return true; }
-  if (strncasecmp(icao, "C41", 3) == 0 || strncasecmp(icao, "C42", 3) == 0) { maxOut=8; return true; }
-  if (strncasecmp(icao, "MU2", 3) == 0) { maxOut=10; return true; }
-  if (strncasecmp(icao, "M28", 3) == 0) { maxOut=19; return true; }
-  if (strncasecmp(icao, "C21", 3) == 0 || strncasecmp(icao, "CN3", 3) == 0 || strncasecmp(icao, "C29", 3) == 0) { maxOut=71; return true; }
-  if (strcasecmp(icao, "SF50") == 0) { maxOut=7; return true; }
+  if (strncasecmp(icao, "PA28", 4) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "PA31", 4) == 0) {
+    maxOut = 10;
+    return true;
+  }
+  if (strncasecmp(icao, "PA34", 4) == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strncasecmp(icao, "PA44", 4) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "PA46", 4) == 0 || strncasecmp(icao, "P46T", 4) == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strncasecmp(icao, "C15", 3) == 0) {
+    maxOut = 2;
+    return true;
+  }
+  if (strncasecmp(icao, "C17", 3) == 0 || strncasecmp(icao, "C18", 3) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "C19", 3) == 0) {
+    maxOut = 6;
+    return true;
+  }
+  if (strncasecmp(icao, "C20", 3) == 0 || strncasecmp(icao, "T20", 3) == 0 || strncasecmp(icao, "U20", 3) == 0 || strncasecmp(icao, "P20", 3) == 0) {
+    maxOut = 7;
+    return true;
+  }
+  if (strncasecmp(icao, "C40", 3) == 0 || strncasecmp(icao, "C35", 3) == 0) {
+    maxOut = 4;
+    return true;
+  }
+  if (strncasecmp(icao, "C41", 3) == 0 || strncasecmp(icao, "C42", 3) == 0) {
+    maxOut = 8;
+    return true;
+  }
+  if (strncasecmp(icao, "MU2", 3) == 0) {
+    maxOut = 10;
+    return true;
+  }
+  if (strncasecmp(icao, "M28", 3) == 0) {
+    maxOut = 19;
+    return true;
+  }
+  if (strncasecmp(icao, "C21", 3) == 0 || strncasecmp(icao, "CN3", 3) == 0 || strncasecmp(icao, "C29", 3) == 0) {
+    maxOut = 71;
+    return true;
+  }
+  if (strcasecmp(icao, "SF50") == 0) {
+    maxOut = 7;
+    return true;
+  }
   return false;
 }
 
@@ -1167,20 +1434,26 @@ inline bool aircraftSeatMax(const char* icao, uint16_t& maxOut) {
 // Friendly name from String code (prefers lightweight mapping; falls back to rich model)
 inline String aircraftFriendlyName(const String& rawCode) {
   if (rawCode.length() == 0) return String("");
-  String code = rawCode; code.trim(); code.toUpperCase();
+  String code = rawCode;
+  code.trim();
+  code.toUpperCase();
   // Prefer rich table and compose Manufacturer + Model if available
-  for (size_t i = 0; i < sizeof(kTypeInfo)/sizeof(kTypeInfo[0]); ++i) {
+  for (size_t i = 0; i < sizeof(kTypeInfo) / sizeof(kTypeInfo[0]); ++i) {
     bool match = false;
     if (strcasecmp(code.c_str(), kTypeInfo[i].icao) == 0) match = true;
     else if (kTypeInfo[i].iata && strlen(kTypeInfo[i].iata) && strcasecmp(code.c_str(), kTypeInfo[i].iata) == 0) match = true;
     if (match) {
-      String manuf = String(kTypeInfo[i].manufacturer ? kTypeInfo[i].manufacturer : ""); manuf.trim();
-      String model = String(kTypeInfo[i].model ? kTypeInfo[i].model : ""); model.trim();
+      String manuf = String(kTypeInfo[i].manufacturer ? kTypeInfo[i].manufacturer : "");
+      manuf.trim();
+      String model = String(kTypeInfo[i].model ? kTypeInfo[i].model : "");
+      model.trim();
       if (!manuf.length()) return model;
       // Avoid duplication if model already starts with manufacturer
-      String modelLower = model; modelLower.toLowerCase();
-      String manufLower = manuf; manufLower.toLowerCase();
-      if (modelLower.startsWith(manufLower)) return model; // model includes manufacturer already
+      String modelLower = model;
+      modelLower.toLowerCase();
+      String manufLower = manuf;
+      manufLower.toLowerCase();
+      if (modelLower.startsWith(manufLower)) return model;  // model includes manufacturer already
       return manuf + String(" ") + model;
     }
   }
@@ -1191,11 +1464,14 @@ inline String aircraftFriendlyName(const String& rawCode) {
 // Upper-seat-only helpers
 inline bool aircraftSeatMax(const String& rawCode, uint16_t& maxOut) {
   if (rawCode.length() == 0) return false;
-  String code = rawCode; code.trim(); code.toUpperCase();
+  String code = rawCode;
+  code.trim();
+  code.toUpperCase();
   // Exact match against rich table by ICAO or IATA
-  for (size_t i = 0; i < sizeof(kTypeInfo)/sizeof(kTypeInfo[0]); ++i) {
+  for (size_t i = 0; i < sizeof(kTypeInfo) / sizeof(kTypeInfo[0]); ++i) {
     if (code.equalsIgnoreCase(kTypeInfo[i].icao) || (kTypeInfo[i].iata && strlen(kTypeInfo[i].iata) && code.equalsIgnoreCase(kTypeInfo[i].iata))) {
-      maxOut = kTypeInfo[i].maxSeats; return true;
+      maxOut = kTypeInfo[i].maxSeats;
+      return true;
     }
   }
   // Heuristics (reuse char* helper)
@@ -1204,9 +1480,10 @@ inline bool aircraftSeatMax(const String& rawCode, uint16_t& maxOut) {
 
 // Compose display string "CODE FriendlyName" with graceful fallbacks
 inline String aircraftDisplayType(const String& rawCode) {
-  String code = rawCode; code.trim();
+  String code = rawCode;
+  code.trim();
   String name = aircraftFriendlyName(code);
-  if (!name.length()) return code;        // fallback to code
-  if (!code.length()) return name;        // safety
+  if (!name.length()) return code;  // fallback to code
+  if (!code.length()) return name;  // safety
   return code + " " + name;
 }
