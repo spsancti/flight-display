@@ -4,4 +4,4 @@ config.h
 /.vscode/
 *.bak
 *.tmp
-
+*.pdf
