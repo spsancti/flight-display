@@ -27,6 +27,23 @@
 
 // 4-channel relay module GPIO (active level configured in sketch)
 #define RELAY_IN1_PIN 33
-#define RELAY_IN2_PIN 25
+#define RELAY_IN2_PIN 32
 #define RELAY_IN3_PIN 26
 #define RELAY_IN4_PIN 27
+
+// Optional: explicit role mapping (uncomment and adjust to match wiring)
+// #define RELAY_STATUS_PIN RELAY_IN1_PIN
+// #define RELAY_COM_PIN    RELAY_IN2_PIN
+// #define RELAY_PVT_PIN    RELAY_IN3_PIN
+// #define RELAY_MIL_PIN    RELAY_IN4_PIN
+// #define RELAY_ACTIVE_HIGH 0      // 0 for active-LOW boards, 1 for active-HIGH
+// #define RELAY_BLINK_ON_BOOT 0    // 1 to blink status during boot
+// #define RELAY_USE_STATUS_CHANNEL 1 // 0 to disable dedicated status channel
+
+// --- OTA (ArduinoOTA) ---
+// Set FEATURE_OTA to 1 to enable over-the-air updates.
+// Provide a strong OTA password for production.
+// #define FEATURE_OTA 1
+// #define OTA_HOSTNAME "flight-display"
+// #define OTA_PORT 3232
+// #define OTA_PASSWORD "change-me"
