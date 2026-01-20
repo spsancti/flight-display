@@ -15,6 +15,7 @@
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 #include <WebServer.h>
+#include <cstring>
 #if defined(ESP32)
 #include <esp_system.h>
 #endif
@@ -148,9 +149,15 @@ static TestOverride g_test;
 // -----------------------------
 struct UiColors {
   uint16_t bg;
+  uint16_t bezel;
+  uint16_t bezelBorder;
+  uint16_t screen;
+  uint16_t screenBorder;
   uint16_t text;
   uint16_t muted;
-  uint16_t accent;
+  uint16_t label;
+  uint16_t green;
+  uint16_t greenDim;
   uint16_t com;
   uint16_t pvt;
   uint16_t mil;
@@ -159,6 +166,13 @@ struct UiColors {
 };
 
 static UiColors g_colors;
+static int16_t g_panelR = 0;
+static int16_t g_windowX = 0;
+static int16_t g_windowY = 0;
+static int16_t g_windowW = 0;
+static int16_t g_windowH = 0;
+static int16_t g_windowR = 0;
+static int16_t g_labelY = 0;
 
 enum class WifiUiState {
   Offline,
@@ -181,15 +195,37 @@ static void waitMs(uint32_t durationMs) {
 }
 
 static void initUiColors() {
-  g_colors.bg = BLACK;
-  g_colors.text = WHITE;
-  g_colors.muted = g_gfx->color565(150, 150, 150);
-  g_colors.accent = g_gfx->color565(80, 200, 255);
-  g_colors.com = g_gfx->color565(70, 160, 255);
-  g_colors.pvt = g_gfx->color565(90, 220, 120);
-  g_colors.mil = g_gfx->color565(255, 80, 80);
+  g_colors.bg = g_gfx->color565(6, 7, 8);
+  g_colors.bezel = g_gfx->color565(18, 20, 22);
+  g_colors.bezelBorder = g_gfx->color565(36, 38, 40);
+  g_colors.screen = g_gfx->color565(9, 12, 10);
+  g_colors.screenBorder = g_gfx->color565(22, 28, 22);
+  g_colors.text = g_gfx->color565(230, 230, 230);
+  g_colors.muted = g_gfx->color565(150, 155, 160);
+  g_colors.label = g_gfx->color565(130, 130, 130);
+  g_colors.green = g_gfx->color565(100, 255, 120);
+  g_colors.greenDim = g_gfx->color565(60, 170, 80);
+  g_colors.com = g_gfx->color565(250, 245, 235);
+  g_colors.pvt = g_gfx->color565(230, 230, 230);
+  g_colors.mil = g_gfx->color565(210, 30, 30);
   g_colors.warn = g_gfx->color565(255, 190, 60);
   g_colors.ok = g_gfx->color565(80, 220, 160);
+}
+
+static void computeLayout() {
+  int16_t innerRadius = g_safeRadius - 12;
+  g_panelR = innerRadius;
+
+  g_windowW = (int16_t)(innerRadius * 1.35f);
+  g_windowH = (int16_t)(innerRadius * 0.85f);
+  if (g_windowW < 200) g_windowW = 200;
+  if (g_windowH < 140) g_windowH = 140;
+  if (g_windowW > (g_safeRadius * 2 - 36)) g_windowW = g_safeRadius * 2 - 36;
+  if (g_windowH > (g_safeRadius * 2 - 120)) g_windowH = g_safeRadius * 2 - 120;
+  g_windowX = g_centerX - g_windowW / 2;
+  g_windowY = g_centerY - g_windowH / 2 - 10;
+  g_windowR = 16;
+  g_labelY = g_windowY + g_windowH + 26;
 }
 
 static void drawCenteredText(const String &text, int16_t centerX, int16_t centerY, const GFXfont *font, uint16_t color) {
@@ -269,6 +305,40 @@ static void drawBadge(const String &text, int16_t centerX, int16_t centerY, uint
   drawCenteredText(text, centerX, centerY, font, textColor);
 }
 
+static void drawTopLeds(const char *active) {
+  const char *labels[3] = {"PVT", "COM", "MIL"};
+  uint16_t colors[3] = {g_colors.pvt, g_colors.com, g_colors.mil};
+  int16_t btnW = 44;
+  int16_t btnH = 26;
+  int16_t gap = 10;
+  int16_t totalW = (btnW * 3) + (gap * 2);
+  int16_t startX = g_centerX - totalW / 2;
+  int16_t y = g_centerY - g_safeRadius + 40;
+  for (int i = 0; i < 3; ++i) {
+    int16_t x = startX + i * (btnW + gap);
+    bool isActive = active && strcmp(active, labels[i]) == 0;
+    uint16_t fill = isActive ? colors[i] : g_colors.bezelBorder;
+    uint16_t border = isActive ? colors[i] : g_colors.label;
+    uint16_t text = isActive ? BLACK : g_colors.muted;
+    g_gfx->fillRoundRect(x, y, btnW, btnH, 6, fill);
+    g_gfx->drawRoundRect(x, y, btnW, btnH, 6, border);
+    drawCenteredText(String(labels[i]), x + btnW / 2, y + btnH / 2, &FreeSans9pt7b, text);
+  }
+}
+
+static void drawBottomArcLabels() {
+  const char *labels[3] = {"DISTANCE", "SOULS", "ALTITUDE"};
+  const float anglesDeg[3] = {238.0f, 270.0f, 302.0f};
+  int16_t r = g_safeRadius - 8;
+  for (int i = 0; i < 3; ++i) {
+    float radians = anglesDeg[i] * PI / 180.0f;
+    int16_t x = g_centerX + (int16_t)(cosf(radians) * r);
+    int16_t y = g_centerY + (int16_t)(sinf(radians) * r);
+    if (y < g_labelY) y = g_labelY;
+    drawCenteredText(String(labels[i]), x, y, &FreeSans9pt7b, g_colors.label);
+  }
+}
+
 static void drawStatusIndicators() {
   int16_t r = 6;
   int16_t x = g_centerX - g_safeRadius + 24;
@@ -295,17 +365,16 @@ static void drawRadialMetric(const String &value, const String &label, float ang
 
 static void drawCenteredTitle(const String &title, const String &subtitle) {
   const GFXfont *titleFonts[] = {
-    &FreeSansBold24pt7b,
     &FreeSansBold18pt7b,
     &FreeSansBold12pt7b,
     &FreeSans12pt7b,
     &FreeSans9pt7b,
   };
   const size_t fontCount = sizeof(titleFonts) / sizeof(titleFonts[0]);
-  int16_t maxWidth = g_safeRadius * 2 - 48;
-  int16_t centerAreaRadius = g_safeRadius - 96;
-  if (centerAreaRadius < 80) centerAreaRadius = g_safeRadius - 60;
-  int16_t maxHeight = centerAreaRadius * 2;
+  int16_t maxWidth = g_windowW - 24;
+  int16_t contentTop = g_windowY + 10;
+  int16_t contentBottom = g_windowY + g_windowH - 42;
+  int16_t maxHeight = contentBottom - contentTop;
 
   String line1 = title;
   String line2;
@@ -334,22 +403,26 @@ static void drawCenteredTitle(const String &title, const String &subtitle) {
 
   int16_t titleH = textHeightForFont(chosen);
   int16_t totalTitleH = titleH + ((line2.length() > 0) ? (titleH + 8) : 0);
-  int16_t baseY = g_centerY - (totalTitleH / 2);
-  drawCenteredText(line1, g_centerX, baseY + titleH / 2, chosen, g_colors.text);
+  int16_t baseY = contentTop + (maxHeight - totalTitleH) / 2;
+  drawCenteredText(line1, g_centerX, baseY + titleH / 2, chosen, g_colors.green);
   if (line2.length() > 0) {
-    drawCenteredText(line2, g_centerX, baseY + titleH + 8 + titleH / 2, chosen, g_colors.text);
+    drawCenteredText(line2, g_centerX, baseY + titleH + 8 + titleH / 2, chosen, g_colors.green);
   }
 
   if (subtitle.length()) {
-    int16_t subtitleY = baseY + totalTitleH + 26;
-    drawCenteredText(subtitle, g_centerX, subtitleY, &FreeSans9pt7b, g_colors.muted);
+    int16_t subtitleY = baseY + totalTitleH + 22;
+    drawCenteredText(subtitle, g_centerX, subtitleY, &FreeSans9pt7b, g_colors.greenDim);
   }
 }
 
 static void drawBackground() {
   g_gfx->fillScreen(g_colors.bg);
-  drawRing(g_colors.accent, 3);
-  drawStatusIndicators();
+  g_gfx->fillCircle(g_centerX, g_centerY, g_panelR + 4, g_colors.bezelBorder);
+  g_gfx->fillCircle(g_centerX, g_centerY, g_panelR, g_colors.bezel);
+  g_gfx->fillRoundRect(g_windowX, g_windowY, g_windowW, g_windowH, g_windowR, g_colors.screen);
+  g_gfx->drawRoundRect(g_windowX, g_windowY, g_windowW, g_windowH, g_windowR, g_colors.screenBorder);
+  drawTopLeds(nullptr);
+  drawBottomArcLabels();
 }
 
 static void renderSplash(const char *title, const char *subtitle) {
@@ -387,11 +460,11 @@ static String classifyOp(const FlightInfo &fi) {
     }
   }
 
-  // 2) Seat-based override: small aircraft (<= 15 seats) are PVT for this device.
+  // 2) Seat-based override: small aircraft (<= 20 seats) are PVT for this device.
   if (fi.typeCode.length()) {
     uint16_t maxSeats = 0;
     if (aircraftSeatMax(fi.typeCode, maxSeats)) {
-      if (maxSeats > 0 && maxSeats <= 15) {
+      if (maxSeats > 0 && maxSeats <= 20) {
         return String("PVT");
       }
     }
@@ -718,6 +791,7 @@ static bool initDisplay() {
       g_centerY = g_screenH / 2;
       g_safeRadius = min(g_centerX, g_centerY) - 18;
       initUiColors();
+      computeLayout();
       g_gfx->fillScreen(g_colors.bg);
       g_displayReady = true;
       return true;
@@ -754,12 +828,7 @@ static void renderFlight(const FlightInfo &fi) {
   if (!friendly.length()) friendly = String("Unknown Aircraft");
 
   drawBackground();
-
-  // Op class badge near top
-  uint16_t badgeColor = g_colors.pvt;
-  if (fi.opClass == "COM") badgeColor = g_colors.com;
-  else if (fi.opClass == "MIL") badgeColor = g_colors.mil;
-  drawBadge(fi.opClass, g_centerX, g_centerY - g_safeRadius + 42, badgeColor, g_colors.text);
+  drawTopLeds(fi.opClass.c_str());
 
   String callsign = fi.ident.length() ? fi.ident : String("—");
   drawCenteredTitle(friendly, callsign);
@@ -778,9 +847,11 @@ static void renderFlight(const FlightInfo &fi) {
   String altStr = String("—");
   if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
 
-  drawRadialMetric(distStr, "DIST", 225.0f, g_colors.accent);
-  drawRadialMetric(seatsStr, "SEATS", 90.0f, g_colors.ok);
-  drawRadialMetric(altStr, "ALT", 315.0f, g_colors.warn);
+  int16_t valueY = g_windowY + g_windowH - 22;
+  int16_t colW = g_windowW / 3;
+  drawCenteredText(distStr, g_windowX + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
+  drawCenteredText(seatsStr, g_windowX + colW + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
+  drawCenteredText(altStr, g_windowX + 2 * colW + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
 }
 
 void setup() {
