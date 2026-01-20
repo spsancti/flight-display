@@ -377,13 +377,13 @@ static FlightInfo g_lastShown;
 static String classifyOp(const FlightInfo &fi) {
   // 1) Military always wins regardless of size
   if (FEATURE_MIL_LOOKUP && fi.hex.length()) {
-    bool isMil;
+    bool isMil = false;
     if (milCacheLookup(fi.hex, isMil)) {
       if (isMil) return String("MIL");
     } else {
       bool ok = fetchIsMilitaryByHex(fi.hex, isMil);
       if (ok) milCacheStore(fi.hex, isMil);
-      if (isMil) return String("MIL");
+      if (ok && isMil) return String("MIL");
     }
   }
 
