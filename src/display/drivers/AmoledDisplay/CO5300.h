@@ -10,9 +10,15 @@ class CO5300 : public Arduino_CO5300 {
            int16_t h = CO5300_MAXHEIGHT, uint8_t col_offset1 = 0, uint8_t row_offset1 = 0, uint8_t col_offset2 = 0,
            uint8_t row_offset2 = 0, uint8_t color_order = CO5300_MADCTL_RGB);
     void setRotation(uint8_t r) override;
+    void writePixelPreclipped(int16_t x, int16_t y, uint16_t color) override;
+    void writeFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override;
+    void writeFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) override;
+    void writeFillRectPreclipped(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override;
+    void setStrokeBackground(uint16_t color);
 
   private:
     uint8_t _color_order;
+    uint16_t _stroke_bg_color;
 };
 
 #endif

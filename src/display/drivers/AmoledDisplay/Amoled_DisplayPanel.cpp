@@ -39,16 +39,19 @@ Amoled_DisplayPanel::~Amoled_DisplayPanel() {
 }
 
 bool Amoled_DisplayPanel::begin(Amoled_Display_Panel_Color_Order order) {
-    bool success = true;
+    bool display_ok = true;
 
 #if AMOLED_TOUCH_ENABLED
-    success &= initTouch();
+    if (!initTouch()) {
+        // Touch is optional for rendering; keep the display usable if touch fails.
+        ESP_LOGW("Amoled_DisplayPanel", "Touch init failed; continuing without touch");
+    }
 #else
     touchType = TOUCH_UNKNOWN;
 #endif
-    success &= initDisplay(order);
+    display_ok &= initDisplay(order);
 
-    return success;
+    return display_ok;
 }
 
 bool Amoled_DisplayPanel::installSD() {
