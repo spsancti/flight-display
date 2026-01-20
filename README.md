@@ -27,7 +27,6 @@ The relay/LED outputs have been removed. Status is shown directly on the display
   - Green: connected
   - Yellow: connecting
   - Red: offline
-- **OTA status dot** (next to Wi-Fi dot): active during OTA update
 - **PVT/COM/MIL badge** (top arc)
 - **Radial metrics** around the ring: Distance, Seats, Altitude
 
@@ -97,7 +96,7 @@ pio device monitor -e display
 - **Safe circular frame:** The UI computes a safe radius inside the 466×466 circle and draws a subtle accent ring along that edge.
 - **Center title block:** The aircraft friendly name is centered with an optional second line and callsign subtitle.
 - **Radial metrics:** Distance (bottom-left), seats (top), and altitude (bottom-right) are rendered around the perimeter for fast glanceability.
-- **Status indicators:** Small dots at the top-left indicate Wi‑Fi (green/amber/red) and OTA activity.
+- **Status indicators:** Small dot at the top-left indicates Wi‑Fi status (green/amber/red).
 - **Op-class badge:** A pill label (PVT/COM/MIL) sits near the top to replace relay LEDs.
 
 ## API Details

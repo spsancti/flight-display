@@ -7,10 +7,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#ifdef ESP32
-#include <ArduinoOTA.h>
-#include <ESPmDNS.h>
-#endif
 #include <ArduinoJson.h>
 #include <Arduino_GFX_Library.h>
 #include <Fonts/FreeSans9pt7b.h>
@@ -53,28 +49,11 @@ struct FlightInfo {
 };
 
 static void renderSplash(const char *title, const char *subtitle = nullptr);
-static void renderOtaProgress(uint8_t pct);
 static void renderFlight(const FlightInfo &fi);
 static void renderNoData(const char *detail);
 static bool milCacheLookup(const String &hex, bool &outIsMil);
 static void milCacheStore(const String &hex, bool isMil);
 static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
-
-// -----------------------------
-// OTA configuration (overridable in config.h)
-// -----------------------------
-#ifndef FEATURE_OTA
-#define FEATURE_OTA 1  // Set to 0 to disable Arduino OTA
-#endif
-#ifndef OTA_PORT
-#define OTA_PORT 3232
-#endif
-#ifndef OTA_HOSTNAME
-#define OTA_HOSTNAME "flight-display"
-#endif
-#ifndef OTA_PASSWORD
-#define OTA_PASSWORD ""  // Empty = no auth (DEV ONLY). Set a strong password for production.
-#endif
 
 // Boot staging: allow power to settle before Wi-Fi/TLS ramps current
 #ifndef BOOT_POWER_SETTLE_MS
@@ -132,11 +111,6 @@ static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;     // HTTP read timeout
 // Wi-Fi reconnect state
 static bool wifiInitialized = false;
 static bool wifiEverBegun = false;
-
-#if FEATURE_OTA
-static bool g_otaReady = false;        // true after ArduinoOTA.begin while Wi-Fi has IP
-static volatile bool g_inOta = false;  // set during OTA to pause app work
-#endif
 
 // MIL cache
 struct MilCacheEntry {
@@ -305,12 +279,6 @@ static void drawStatusIndicators() {
   else wifiColor = g_colors.mil;
   g_gfx->fillCircle(x, y, r, wifiColor);
   g_gfx->drawCircle(x, y, r, g_colors.text);
-
-#if FEATURE_OTA
-  uint16_t otaColor = g_inOta ? g_colors.accent : g_colors.muted;
-  g_gfx->fillCircle(x + 24, y, r, otaColor);
-  g_gfx->drawCircle(x + 24, y, r, g_colors.text);
-#endif
 }
 
 static void drawRadialMetric(const String &value, const String &label, float angleDeg, uint16_t valueColor) {
@@ -385,7 +353,11 @@ static void drawBackground() {
 }
 
 static void renderSplash(const char *title, const char *subtitle) {
-  if (!g_displayReady) return;
+  if (!g_displayReady)
+  {
+    Serial.println(F("[Display] Not ready"));
+    return;
+  }
   drawBackground();
   drawCenteredTitle(String(title), subtitle ? String(subtitle) : String(""));
 }
@@ -394,14 +366,6 @@ static void renderNoData(const char *detail) {
   if (!g_displayReady) return;
   drawBackground();
   drawCenteredTitle(String("No Data"), detail ? String(detail) : String(""));
-}
-
-static void renderOtaProgress(uint8_t pct) {
-  if (!g_displayReady) return;
-  char buf[24];
-  snprintf(buf, sizeof(buf), "OTA %u%%", pct);
-  drawBackground();
-  drawCenteredTitle(String("Updating"), String(buf));
 }
 
 // (moved earlier)
@@ -819,38 +783,6 @@ static void renderFlight(const FlightInfo &fi) {
   drawRadialMetric(altStr, "ALT", 315.0f, g_colors.warn);
 }
 
-#if FEATURE_OTA
-static void otaBeginOnce() {
-  if (g_otaReady) return;
-  ArduinoOTA.setPort(OTA_PORT);
-  ArduinoOTA.setHostname(OTA_HOSTNAME);
-  if (strlen(OTA_PASSWORD) > 0) ArduinoOTA.setPassword(OTA_PASSWORD);
-  ArduinoOTA.onStart([]() {
-    g_inOta = true;
-    LOG_WARN("OTA start");
-  });
-  ArduinoOTA.onEnd([]() {
-    LOG_WARN("OTA end");
-    g_inOta = false;
-  });
-  ArduinoOTA.onProgress([](unsigned progress, unsigned total) {
-    static uint32_t lastDraw = 0;
-    uint32_t now = millis();
-    if (now - lastDraw < 150) return;  // rate-limit drawing
-    lastDraw = now;
-    uint8_t pct = (total ? (progress * 100U / total) : 0);
-    renderOtaProgress(pct);
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    LOG_ERROR("OTA error: %d", (int)error);
-    g_inOta = false;  // allow app to resume
-  });
-  ArduinoOTA.begin();
-  g_otaReady = true;
-  LOG_INFO("OTA ready: %s.local:%d", OTA_HOSTNAME, OTA_PORT);
-}
-#endif
-
 void setup() {
   Serial.begin(115200);
   waitMs(20);
@@ -874,7 +806,10 @@ void setup() {
 #endif
 
   if (!initDisplay()) {
-    Serial.println(F("[Display] AMOLED init failed"));
+    while (true) {
+      Serial.println(F("[Display] AMOLED init failed"));
+      delay(1000);
+    }
   }
 
   if (g_displayReady) {
@@ -890,10 +825,6 @@ void setup() {
         // Drop TX power while attempting to reconnect to reduce current spikes
         WiFi.setTxPower(WIFI_BOOT_TXPOWER);
         WiFi.setSleep(true);
-#if FEATURE_OTA
-        g_otaReady = false;
-        g_inOta = false;
-#endif
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         Serial.print(F("[WiFi] Got IP: "));
@@ -904,9 +835,6 @@ void setup() {
         WiFi.setSleep(false);
         // Wi-Fi up; print reminder of server endpoint
         Serial.println(F("[HTTP] Server ready on port 80"));
-#if FEATURE_OTA
-        otaBeginOnce();
-#endif
 #if FEATURE_TEST_ENDPOINT
         httpStartOnce();
 #endif
@@ -933,6 +861,7 @@ void setup() {
 #endif
 }
 
+
 void loop() {
   static uint32_t lastFetch = 0;
 
@@ -943,17 +872,6 @@ void loop() {
 #if FEATURE_TEST_ENDPOINT
   if (g_httpStarted) {
     g_http.handleClient();
-  }
-#endif
-
-#if FEATURE_OTA
-  if (g_otaReady) {
-    ArduinoOTA.handle();
-  }
-  if (g_inOta) {
-    // Skip all other work during OTA to ensure smooth flashing
-    yield();
-    return;
   }
 #endif
 
