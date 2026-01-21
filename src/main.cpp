@@ -15,6 +15,8 @@
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 #include <WebServer.h>
+#include <lvgl.h>
+#include "display/drivers/common/LV_Helper.h"
 #include <cstring>
 #if defined(ESP32)
 #include <esp_system.h>
@@ -174,6 +176,39 @@ static int16_t g_windowH = 0;
 static int16_t g_windowR = 0;
 static int16_t g_labelY = 0;
 
+struct UiLvColors {
+  lv_color_t bg;
+  lv_color_t bezel;
+  lv_color_t bezelBorder;
+  lv_color_t screen;
+  lv_color_t screenBorder;
+  lv_color_t text;
+  lv_color_t muted;
+  lv_color_t label;
+  lv_color_t green;
+  lv_color_t greenDim;
+  lv_color_t pvt;
+  lv_color_t com;
+  lv_color_t mil;
+  lv_color_t ledOff;
+};
+
+struct UiLvWidgets {
+  lv_obj_t *bezel = nullptr;
+  lv_obj_t *window = nullptr;
+  lv_obj_t *title = nullptr;
+  lv_obj_t *subtitle = nullptr;
+  lv_obj_t *route = nullptr;
+  lv_obj_t *metricVal[3] = {nullptr, nullptr, nullptr};
+  lv_obj_t *metricLbl[3] = {nullptr, nullptr, nullptr};
+  lv_obj_t *ledBtn[3] = {nullptr, nullptr, nullptr};
+  lv_obj_t *ledLbl[3] = {nullptr, nullptr, nullptr};
+};
+
+static UiLvColors g_lvColors;
+static UiLvWidgets g_lv;
+static bool g_lvReady = false;
+
 enum class WifiUiState {
   Offline,
   Connecting,
@@ -216,16 +251,168 @@ static void computeLayout() {
   int16_t innerRadius = g_safeRadius - 12;
   g_panelR = innerRadius;
 
-  g_windowW = (int16_t)(innerRadius * 1.35f);
-  g_windowH = (int16_t)(innerRadius * 0.85f);
+  g_windowW = (int16_t)(g_screenW * 0.90f) - 20;
+  g_windowH = (int16_t)(g_screenH * 0.42f);
   if (g_windowW < 200) g_windowW = 200;
   if (g_windowH < 140) g_windowH = 140;
-  if (g_windowW > (g_safeRadius * 2 - 36)) g_windowW = g_safeRadius * 2 - 36;
-  if (g_windowH > (g_safeRadius * 2 - 120)) g_windowH = g_safeRadius * 2 - 120;
+  int16_t maxW = g_safeRadius * 2 - 8;
+  int16_t maxH = g_safeRadius * 2 - 120;
+  if (g_windowW > maxW) g_windowW = maxW;
+  if (g_windowH > maxH) g_windowH = maxH;
   g_windowX = g_centerX - g_windowW / 2;
   g_windowY = g_centerY - g_windowH / 2 - 10;
   g_windowR = 16;
-  g_labelY = g_windowY + g_windowH + 26;
+  g_labelY = g_windowY + g_windowH + 18;
+}
+
+static void uiInit() {
+  g_lvColors.bg = lv_color_hex(0x0A0B0C);
+  g_lvColors.bezel = lv_color_hex(0x121416);
+  g_lvColors.bezelBorder = lv_color_hex(0x2A2C2E);
+  g_lvColors.screen = lv_color_hex(0x0A100B);
+  g_lvColors.screenBorder = lv_color_hex(0x1A221B);
+  g_lvColors.text = lv_color_hex(0xE6E6E6);
+  g_lvColors.muted = lv_color_hex(0x9AA0A6);
+  g_lvColors.label = lv_color_hex(0x7C7C7C);
+  g_lvColors.green = lv_color_hex(0x64FF78);
+  g_lvColors.greenDim = lv_color_hex(0x3CAA50);
+  g_lvColors.pvt = lv_color_hex(0xE6E6E6);
+  g_lvColors.com = lv_color_hex(0xFAF5EB);
+  g_lvColors.mil = lv_color_hex(0xD21E1E);
+  g_lvColors.ledOff = lv_color_hex(0x2F3336);
+
+  lv_obj_t *scr = lv_scr_act();
+  lv_obj_set_style_bg_color(scr, g_lvColors.bg, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
+
+  int16_t d = min(g_screenW, g_screenH) - 8;
+  g_lv.bezel = lv_obj_create(scr);
+  lv_obj_set_size(g_lv.bezel, d, d);
+  lv_obj_set_style_radius(g_lv.bezel, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(g_lv.bezel, g_lvColors.bezel, LV_PART_MAIN);
+  lv_obj_set_style_border_color(g_lv.bezel, g_lvColors.bezelBorder, LV_PART_MAIN);
+  lv_obj_set_style_border_width(g_lv.bezel, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(g_lv.bezel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(g_lv.bezel, g_centerX - d / 2, g_centerY - d / 2);
+
+  g_lv.window = lv_obj_create(scr);
+  lv_obj_set_size(g_lv.window, g_windowW, g_windowH);
+  lv_obj_set_style_radius(g_lv.window, 14, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(g_lv.window, g_lvColors.screen, LV_PART_MAIN);
+  lv_obj_set_style_border_color(g_lv.window, g_lvColors.screenBorder, LV_PART_MAIN);
+  lv_obj_set_style_border_width(g_lv.window, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(g_lv.window, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(g_lv.window, g_windowX, g_windowY);
+
+  static const char *kLedLabels[3] = {"PVT", "COM", "MIL"};
+  int16_t btnW = 44;
+  int16_t btnH = 26;
+  int16_t gap = 10;
+  int16_t totalW = (btnW * 3) + (gap * 2);
+  int16_t startX = g_centerX - totalW / 2;
+  int16_t ledY = g_centerY - g_safeRadius + 40;
+  for (int i = 0; i < 3; ++i) {
+    g_lv.ledBtn[i] = lv_obj_create(scr);
+    lv_obj_set_size(g_lv.ledBtn[i], btnW, btnH);
+    lv_obj_set_style_radius(g_lv.ledBtn[i], 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(g_lv.ledBtn[i], g_lvColors.ledOff, LV_PART_MAIN);
+    lv_obj_set_style_border_color(g_lv.ledBtn[i], g_lvColors.label, LV_PART_MAIN);
+    lv_obj_set_style_border_width(g_lv.ledBtn[i], 1, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_lv.ledBtn[i], 0, LV_PART_MAIN);
+    lv_obj_clear_flag(g_lv.ledBtn[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(g_lv.ledBtn[i], startX + i * (btnW + gap), ledY);
+
+    g_lv.ledLbl[i] = lv_label_create(g_lv.ledBtn[i]);
+    lv_label_set_text(g_lv.ledLbl[i], kLedLabels[i]);
+    lv_obj_set_style_text_color(g_lv.ledLbl[i], lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_lv.ledLbl[i], &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(g_lv.ledLbl[i]);
+  }
+
+  g_lv.title = lv_label_create(g_lv.window);
+  lv_label_set_long_mode(g_lv.title, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(g_lv.title, g_windowW - 16);
+  lv_obj_set_style_text_color(g_lv.title, g_lvColors.green, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.title, &lv_font_montserrat_34, LV_PART_MAIN);
+  lv_obj_set_style_text_align(g_lv.title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_align(g_lv.title, LV_ALIGN_CENTER, 0, -2);
+
+  g_lv.subtitle = lv_label_create(g_lv.window);
+  lv_label_set_long_mode(g_lv.subtitle, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(g_lv.subtitle, g_windowW - 16);
+  lv_obj_set_style_text_color(g_lv.subtitle, g_lvColors.greenDim, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.subtitle, &lv_font_montserrat_24, LV_PART_MAIN);
+  lv_obj_set_style_text_align(g_lv.subtitle, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_align(g_lv.subtitle, LV_ALIGN_TOP_MID, 0, 8);
+
+  g_lv.route = lv_label_create(g_lv.window);
+  lv_label_set_long_mode(g_lv.route, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(g_lv.route, g_windowW - 16);
+  lv_obj_set_style_text_color(g_lv.route, g_lvColors.greenDim, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.route, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_text_align(g_lv.route, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_align(g_lv.route, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_label_set_text(g_lv.route, "TLV-RMO");
+
+  static const char *kMetricLabels[3] = {"DIST", "SOULS", "ALT"};
+  for (int i = 0; i < 3; ++i) {
+    g_lv.metricLbl[i] = lv_label_create(scr);
+    lv_label_set_text(g_lv.metricLbl[i], kMetricLabels[i]);
+    lv_obj_set_style_text_color(g_lv.metricLbl[i], g_lvColors.label, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_lv.metricLbl[i], &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(g_lv.metricLbl[i], 2, LV_PART_MAIN);
+  }
+
+  const float anglesDeg[3] = {238.0f, 270.0f, 302.0f};
+  int16_t r = g_safeRadius - 8;
+  for (int i = 0; i < 3; ++i) {
+    float radians = anglesDeg[i] * PI / 180.0f;
+    int16_t x = g_centerX + (int16_t)(cosf(radians) * r);
+    int16_t y = g_centerY + (int16_t)(sinf(radians) * r);
+    if (y < g_labelY) y = g_labelY;
+    lv_obj_set_pos(g_lv.metricLbl[i], x - 28, y - 8);
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    g_lv.metricVal[i] = lv_label_create(scr);
+    lv_obj_set_style_text_color(g_lv.metricVal[i], g_lvColors.green, LV_PART_MAIN);
+    lv_obj_set_style_text_font(g_lv.metricVal[i], &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_align(g_lv.metricVal[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align_to(g_lv.metricVal[i], g_lv.metricLbl[i], LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
+  }
+
+  g_lvReady = true;
+}
+
+static void uiSetOpClass(const char *op) {
+  if (!g_lvReady) return;
+  const char *labels[3] = {"PVT", "COM", "MIL"};
+  lv_color_t colors[3] = {g_lvColors.pvt, g_lvColors.com, g_lvColors.mil};
+  for (int i = 0; i < 3; ++i) {
+    bool isActive = op && strcmp(op, labels[i]) == 0;
+    lv_color_t fill = isActive ? colors[i] : g_lvColors.ledOff;
+    lv_color_t border = isActive ? colors[i] : g_lvColors.label;
+    lv_color_t text = isActive ? lv_color_hex(0x000000) : g_lvColors.muted;
+    lv_obj_set_style_bg_color(g_lv.ledBtn[i], fill, LV_PART_MAIN);
+    lv_obj_set_style_border_color(g_lv.ledBtn[i], border, LV_PART_MAIN);
+    lv_obj_set_style_text_color(g_lv.ledLbl[i], text, LV_PART_MAIN);
+  }
+}
+
+static void uiSetTitle(const String &title, const String &subtitle) {
+  if (!g_lvReady) return;
+  lv_label_set_text(g_lv.title, title.c_str());
+  lv_label_set_text(g_lv.subtitle, subtitle.c_str());
+  if (g_lv.route) {
+    lv_label_set_text(g_lv.route, "TLV-RMO");
+  }
+}
+
+static void uiSetMetrics(const String &dist, const String &seats, const String &alt) {
+  if (!g_lvReady) return;
+  lv_label_set_text(g_lv.metricVal[0], dist.c_str());
+  lv_label_set_text(g_lv.metricVal[1], seats.c_str());
+  lv_label_set_text(g_lv.metricVal[2], alt.c_str());
 }
 
 static void drawCenteredText(const String &text, int16_t centerX, int16_t centerY, const GFXfont *font, uint16_t color) {
@@ -416,29 +603,21 @@ static void drawCenteredTitle(const String &title, const String &subtitle) {
 }
 
 static void drawBackground() {
-  g_gfx->fillScreen(g_colors.bg);
-  g_gfx->fillCircle(g_centerX, g_centerY, g_panelR + 4, g_colors.bezelBorder);
-  g_gfx->fillCircle(g_centerX, g_centerY, g_panelR, g_colors.bezel);
-  g_gfx->fillRoundRect(g_windowX, g_windowY, g_windowW, g_windowH, g_windowR, g_colors.screen);
-  g_gfx->drawRoundRect(g_windowX, g_windowY, g_windowW, g_windowH, g_windowR, g_colors.screenBorder);
-  drawTopLeds(nullptr);
-  drawBottomArcLabels();
+  if (!g_lvReady) return;
 }
 
 static void renderSplash(const char *title, const char *subtitle) {
-  if (!g_displayReady)
-  {
-    Serial.println(F("[Display] Not ready"));
-    return;
-  }
-  drawBackground();
-  drawCenteredTitle(String(title), subtitle ? String(subtitle) : String(""));
+  if (!g_displayReady || !g_lvReady) return;
+  uiSetOpClass(nullptr);
+  uiSetTitle(String(title), subtitle ? String(subtitle) : String(""));
+  uiSetMetrics(String("—"), String("—"), String("—"));
 }
 
 static void renderNoData(const char *detail) {
-  if (!g_displayReady) return;
-  drawBackground();
-  drawCenteredTitle(String("No Data"), detail ? String(detail) : String(""));
+  if (!g_displayReady || !g_lvReady) return;
+  uiSetOpClass(nullptr);
+  uiSetTitle(String("No Data"), detail ? String(detail) : String(""));
+  uiSetMetrics(String("—"), String("—"), String("—"));
 }
 
 // (moved earlier)
@@ -791,7 +970,6 @@ static bool initDisplay() {
       g_centerY = g_screenH / 2;
       g_safeRadius = min(g_centerX, g_centerY) - 18;
       initUiColors();
-      computeLayout();
       g_gfx->fillScreen(g_colors.bg);
       g_displayReady = true;
       return true;
@@ -802,7 +980,7 @@ static bool initDisplay() {
 }
 
 static void renderFlight(const FlightInfo &fi) {
-  if (!g_displayReady) return;
+  if (!g_displayReady || !g_lvReady) return;
 
   // 1) friendly aircraft name
   String friendly = fi.typeCode.length() ? aircraftFriendlyName(fi.typeCode) : String("");
@@ -827,11 +1005,10 @@ static void renderFlight(const FlightInfo &fi) {
   }
   if (!friendly.length()) friendly = String("Unknown Aircraft");
 
-  drawBackground();
-  drawTopLeds(fi.opClass.c_str());
+  uiSetOpClass(fi.opClass.c_str());
 
   String callsign = fi.ident.length() ? fi.ident : String("—");
-  drawCenteredTitle(friendly, callsign);
+  uiSetTitle(friendly, callsign);
 
   // Metrics around the ring
   String distStr = String("—");
@@ -847,11 +1024,7 @@ static void renderFlight(const FlightInfo &fi) {
   String altStr = String("—");
   if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
 
-  int16_t valueY = g_windowY + g_windowH - 22;
-  int16_t colW = g_windowW / 3;
-  drawCenteredText(distStr, g_windowX + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
-  drawCenteredText(seatsStr, g_windowX + colW + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
-  drawCenteredText(altStr, g_windowX + 2 * colW + colW / 2, valueY, &FreeSansBold12pt7b, g_colors.green);
+  uiSetMetrics(distStr, seatsStr, altStr);
 }
 
 void setup() {
@@ -884,6 +1057,9 @@ void setup() {
   }
 
   if (g_displayReady) {
+    beginLvglHelper(g_panel, false);
+    computeLayout();
+    uiInit();
     renderSplash("Booting...");
   }
 
@@ -935,6 +1111,7 @@ void setup() {
 
 void loop() {
   static uint32_t lastFetch = 0;
+  static uint32_t lastLvgl = 0;
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
@@ -973,6 +1150,14 @@ void loop() {
       if (!g_haveDisplayed) {
         renderNoData("Check Wi-Fi/API");
       }
+    }
+  }
+
+  if (g_lvReady) {
+    uint32_t now = millis();
+    if (now - lastLvgl >= 5) {
+      lv_timer_handler();
+      lastLvgl = now;
     }
   }
 
