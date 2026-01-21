@@ -47,6 +47,7 @@ struct FlightInfo {
   String hex;  // transponder hex id
   bool hasCallsign = false;
   String opClass;  // MIL/COM/PVT
+  String route;    // route string (e.g., TLV-RMO)
   bool valid = false;
   int seatOverride = -1;  // if >0, override seat display
 };
@@ -57,6 +58,7 @@ static void renderNoData(const char *detail);
 static bool milCacheLookup(const String &hex, bool &outIsMil);
 static void milCacheStore(const String &hex, bool isMil);
 static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
+static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute);
 
 // Boot staging: allow power to settle before Wi-Fi/TLS ramps current
 #ifndef BOOT_POWER_SETTLE_MS
@@ -73,6 +75,12 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
 
 #ifndef FEATURE_MIL_LOOKUP
 #define FEATURE_MIL_LOOKUP 1
+#endif
+#ifndef FEATURE_ROUTE_LOOKUP
+#define FEATURE_ROUTE_LOOKUP 1
+#endif
+#ifndef ROUTE_CACHE_TTL_MS
+#define ROUTE_CACHE_TTL_MS (6UL * 60UL * 60UL * 1000UL)
 #endif
 
 // AMOLED panel selection (override in config.h)
@@ -123,6 +131,13 @@ struct MilCacheEntry {
 };
 static const size_t MIL_CACHE_SIZE = 16;
 static MilCacheEntry g_milCache[MIL_CACHE_SIZE];
+
+struct RouteCacheEntry {
+  String callsign;
+  String route;
+  uint32_t ts = 0;
+};
+static RouteCacheEntry g_routeCache;
 
 // -----------------------------
 // Test HTTP server (/test/closest)
@@ -415,6 +430,11 @@ static void uiSetMetrics(const String &dist, const String &seats, const String &
   lv_label_set_text(g_lv.metricVal[2], alt.c_str());
 }
 
+static void uiSetRoute(const String &route) {
+  if (!g_lvReady || !g_lv.route) return;
+  lv_label_set_text(g_lv.route, route.c_str());
+}
+
 static void drawCenteredText(const String &text, int16_t centerX, int16_t centerY, const GFXfont *font, uint16_t color) {
   if (!g_gfx) return;
   g_gfx->setFont(font);
@@ -610,14 +630,16 @@ static void renderSplash(const char *title, const char *subtitle) {
   if (!g_displayReady || !g_lvReady) return;
   uiSetOpClass(nullptr);
   uiSetTitle(String(title), subtitle ? String(subtitle) : String(""));
-  uiSetMetrics(String("—"), String("—"), String("—"));
+  uiSetRoute(String("-"));
+  uiSetMetrics(String("-"), String("-"), String("-"));
 }
 
 static void renderNoData(const char *detail) {
   if (!g_displayReady || !g_lvReady) return;
   uiSetOpClass(nullptr);
   uiSetTitle(String("No Data"), detail ? String(detail) : String(""));
-  uiSetMetrics(String("—"), String("—"), String("—"));
+  uiSetRoute(String("-"));
+  uiSetMetrics(String("-"), String("-"), String("-"));
 }
 
 // (moved earlier)
@@ -660,6 +682,7 @@ static bool sameFlightDisplay(const FlightInfo &a, const FlightInfo &b) {
   if (a.typeCode != b.typeCode) return false;
   if (a.altitudeFt != b.altitudeFt) return false;
   if (a.opClass != b.opClass) return false;
+  if (a.route != b.route) return false;
   // Consider distances equal within 0.1 km to avoid flicker
   double da = isnan(a.distanceKm) ? 0 : a.distanceKm;
   double db = isnan(b.distanceKm) ? 0 : b.distanceKm;
@@ -754,6 +777,7 @@ static FlightInfo parseClosest(JsonVariant root) {
   res.distanceKm = haversineKm(HOME_LAT, HOME_LON, lat, lon);  // 2D ground distance for display only
   res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char *>());
   res.hasCallsign = hasCallsign;
+  res.route = String("");
   return res;
 }
 
@@ -844,6 +868,26 @@ static bool fetchNearestFlight(FlightInfo &out) {
     // Classify operation (MIL/COM/PVT)
     closest.opClass = classifyOp(closest);
     LOG_INFO("Classified op: %s", closest.opClass.c_str());
+    if (FEATURE_ROUTE_LOOKUP && closest.hasCallsign) {
+      bool cacheOk = false;
+      if (g_routeCache.callsign == closest.ident &&
+          (millis() - g_routeCache.ts) < ROUTE_CACHE_TTL_MS &&
+          g_routeCache.route.length()) {
+        closest.route = g_routeCache.route;
+        cacheOk = true;
+      }
+      if (!cacheOk) {
+        String route;
+        if (fetchRouteByCallsign(closest.ident, closest.lat, closest.lon, route)) {
+          closest.route = route;
+          g_routeCache.callsign = closest.ident;
+          g_routeCache.route = route;
+          g_routeCache.ts = millis();
+        } else {
+          LOG_WARN("Route lookup failed for %s", closest.ident.c_str());
+        }
+      }
+    }
     out = closest;
     return true;
   }
@@ -915,6 +959,78 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil) {
   return true;
 }
 
+static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!callsign.length()) return false;
+
+  String url = String(API_BASE);
+  if (url.startsWith("http://")) url.replace("http://", "https://");
+  if (!url.startsWith("http")) url = String("https://") + url;
+  url += "/api/0/routeset";
+
+  DynamicJsonDocument req(256);
+  JsonArray planes = req.createNestedArray("planes");
+  JsonObject p0 = planes.createNestedObject();
+  p0["callsign"] = callsign;
+  if (!isnan(lat)) p0["lat"] = lat;
+  if (!isnan(lon)) p0["lng"] = lon;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10);
+  HTTPClient http;
+  http.setConnectTimeout(8000);
+  http.setTimeout(10000);
+  if (!http.begin(client, url)) return false;
+  http.addHeader("Content-Type", "application/json");
+  String body;
+  serializeJson(req, body);
+  LOG_INFO("Route lookup POST %s callsign=%s", url.c_str(), callsign.c_str());
+  int code = http.POST(body);
+  LOG_INFO("Route lookup status: %d", code);
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  String resp = http.getString();
+  http.end();
+  // Raw response logging removed once parsing confirmed.
+  DynamicJsonDocument doc(2048);
+  DeserializationError err = deserializeJson(doc, resp);
+  if (err) return false;
+  LOG_DEBUG("Route lookup JSON ok");
+
+  String route;
+  if (doc.is<JsonArray>()) {
+    JsonArray arr = doc.as<JsonArray>();
+    if (arr.size() > 0) {
+      JsonVariant v = arr[0];
+      if (v.is<const char *>()) route = String(v.as<const char *>());
+      else if (v.is<JsonObject>()) {
+        JsonObject o = v.as<JsonObject>();
+        if (o["_airport_codes_iata"]) route = String(o["_airport_codes_iata"].as<const char *>());
+        else if (o["route"]) route = String(o["route"].as<const char *>());
+        else if (o["routes"]) route = String(o["routes"].as<const char *>());
+      }
+    }
+  } else if (doc.is<JsonObject>()) {
+    JsonObject o = doc.as<JsonObject>();
+    if (o["_airport_codes_iata"]) route = String(o["_airport_codes_iata"].as<const char *>());
+    else if (o["route"]) route = String(o["route"].as<const char *>());
+    else if (o["routes"]) route = String(o["routes"].as<const char *>());
+    else if (o["result"]) route = String(o["result"].as<const char *>());
+  } else if (doc.is<const char *>()) {
+    route = String(doc.as<const char *>());
+  }
+
+  route.trim();
+  if (!route.length()) return false;
+  LOG_INFO("Route lookup result: %s", route.c_str());
+  outRoute = route;
+  return true;
+}
+
 #if FEATURE_TEST_ENDPOINT
 static void httpStartOnce() {
   if (g_httpStarted) return;
@@ -944,6 +1060,7 @@ static void httpStartOnce() {
     }
     if (fi.valid) {
       fi.opClass = classifyOp(fi);
+      fi.route = String("");
       g_test.fi = fi;
       g_test.active = true;
       g_test.dirty = true;
@@ -1007,21 +1124,22 @@ static void renderFlight(const FlightInfo &fi) {
 
   uiSetOpClass(fi.opClass.c_str());
 
-  String callsign = fi.ident.length() ? fi.ident : String("—");
+  String callsign = fi.ident.length() ? fi.ident : String("-");
   uiSetTitle(friendly, callsign);
+  uiSetRoute(fi.route.length() ? fi.route : String("-"));
 
   // Metrics around the ring
-  String distStr = String("—");
+  String distStr = String("-");
   if (!isnan(fi.distanceKm)) distStr = String(fi.distanceKm, 1) + " km";
 
   uint16_t maxSeats = 0;
-  String seatsStr = String("—");
+  String seatsStr = String("-");
   if (!isPseudo) {
     if (fi.seatOverride > 0) seatsStr = String(fi.seatOverride);
     else if (fi.typeCode.length() && aircraftSeatMax(fi.typeCode, maxSeats) && maxSeats > 0) seatsStr = String(maxSeats);
   }
 
-  String altStr = String("—");
+  String altStr = String("-");
   if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
 
   uiSetMetrics(distStr, seatsStr, altStr);
