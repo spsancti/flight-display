@@ -949,7 +949,12 @@ static void renderFlight(const FlightInfo &fi) {
   }
 
   String altStr = String("-");
-  if (fi.altitudeFt >= 0) altStr = String(fi.altitudeFt) + " ft";
+  if (fi.altitudeFt <= 0) {
+    altStr = String("ground");
+  } else {
+    int meters = (int)(fi.altitudeFt * 0.3048 + 0.5);
+    altStr = String(meters) + " m";
+  }
 
   uiSetMetrics(distStr, seatsStr, altStr);
 }
