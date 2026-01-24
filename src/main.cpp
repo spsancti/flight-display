@@ -1,6 +1,6 @@
 // ESP32 ADS-B Flight Display
 // - Connects to Wi-Fi
-// - Calls adsb.lol /v2/closest/{lat}/{lon}/{radius}
+// - Calls adsb.lol /v2/point/{lat}/{lon}/{radius}
 // - Parses nearest aircraft and renders summary on a 466x466 round AMOLED
 
 #include <Arduino.h>
@@ -116,7 +116,7 @@ static int16_t g_centerY = 0;
 static int16_t g_safeRadius = 0;
 static bool g_displayReady = false;
 
-static const uint32_t FETCH_INTERVAL_MS = 30000;        // 30s between API calls
+static const uint32_t FETCH_INTERVAL_MS = 3000;        // 30s between API calls
 static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;  // HTTP connect timeout
 static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;     // HTTP read timeout
 // Wi-Fi reconnect state
@@ -282,10 +282,10 @@ static void computeLayout() {
 
 static void uiInit() {
   g_lvColors.bg = lv_color_hex(0x0A0B0C);
-  g_lvColors.bezel = lv_color_hex(0x121416);
-  g_lvColors.bezelBorder = lv_color_hex(0x2A2C2E);
+  g_lvColors.bezel = lv_color_hex(0x000000);
+  g_lvColors.bezelBorder = lv_color_hex(0x000000);
   g_lvColors.screen = lv_color_hex(0x0A100B);
-  g_lvColors.screenBorder = lv_color_hex(0x1A221B);
+  g_lvColors.screenBorder = lv_color_hex(0x000000);
   g_lvColors.text = lv_color_hex(0xE6E6E6);
   g_lvColors.muted = lv_color_hex(0x9AA0A6);
   g_lvColors.label = lv_color_hex(0x7C7C7C);
@@ -548,17 +548,9 @@ static bool extractLatLon(JsonObject obj, double &outLat, double &outLon) {
   return false;
 }
 
-static FlightInfo parseClosest(JsonVariant root) {
-  FlightInfo res;
-  if (!root.is<JsonObject>()) return res;
-  JsonObject robj = root.as<JsonObject>();
-  if (!robj.containsKey("ac") || !robj["ac"].is<JsonArray>()) return res;
-  JsonArray ac = robj["ac"].as<JsonArray>();
-  if (ac.size() == 0) return res;
-  JsonObject obj = ac[0].as<JsonObject>();
-
+static bool parseAircraft(JsonObject obj, FlightInfo &res) {
   double lat, lon;
-  if (!extractLatLon(obj, lat, lon)) return res;
+  if (!extractLatLon(obj, lat, lon)) return false;
 
   // Build ident preference chain: flight -> r -> hex
   String ident;
@@ -571,7 +563,9 @@ static FlightInfo parseClosest(JsonVariant root) {
   else ident = String("(unknown)");
   ident.trim();
 
-  long alt = obj["alt_baro"].isNull() ? -1 : obj["alt_baro"].as<long>();
+  long alt = -1;
+  if (!obj["alt_baro"].isNull()) alt = obj["alt_baro"].as<long>();
+  else if (!obj["alt_geom"].isNull()) alt = obj["alt_geom"].as<long>();
   String type = obj["t"].isNull() ? String("") : String(obj["t"].as<const char *>());
   if (!obj["t"] && obj["type"]) type = String(obj["type"].as<const char *>());
   String cat = obj["category"].isNull() ? String("") : String(obj["category"].as<const char *>());
@@ -587,7 +581,28 @@ static FlightInfo parseClosest(JsonVariant root) {
   res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char *>());
   res.hasCallsign = hasCallsign;
   res.route = String("");
+  return true;
+}
+
+static FlightInfo parseClosest(JsonVariant root) {
+  FlightInfo res;
+  if (!root.is<JsonObject>()) return res;
+  JsonObject robj = root.as<JsonObject>();
+  if (!robj.containsKey("ac") || !robj["ac"].is<JsonArray>()) return res;
+  JsonArray ac = robj["ac"].as<JsonArray>();
+  if (ac.size() == 0) return res;
+  JsonObject obj = ac[0].as<JsonObject>();
+  if (!parseAircraft(obj, res)) return FlightInfo{};
   return res;
+}
+
+static uint16_t radiusNmFromKm(double km) {
+  if (km <= 0) return 0;
+  double nm = km * 0.539957;  // km -> nautical miles
+  uint16_t v = (uint16_t)(nm + 0.5);
+  if (v == 0) v = 1;
+  if (v > 250) v = 250;
+  return v;
 }
 
 static bool fetchNearestFlight(FlightInfo &out) {
@@ -602,12 +617,12 @@ static bool fetchNearestFlight(FlightInfo &out) {
       if (base.startsWith("https://")) base.replace("https://", "http://");
       if (!base.startsWith("http")) base = String("http://") + base;
     }
-    base += "/v2/closest/";
+    base += "/v2/point/";
     base += String(HOME_LAT, 6);
     base += "/";
     base += String(HOME_LON, 6);
     base += "/";
-    base += String(SEARCH_RADIUS_KM);
+    base += String(radiusNmFromKm(SEARCH_RADIUS_KM));
     return base;
   };
 
@@ -657,12 +672,13 @@ static bool fetchNearestFlight(FlightInfo &out) {
   acObj["t"] = true;
   acObj["type"] = true;
   acObj["alt_baro"] = true;
+  acObj["alt_geom"] = true;
   acObj["lat"] = true;
   acObj["lon"] = true;
-  // closest endpoint returns only one aircraft, but keep minimal fields
+  acObj["category"] = true;
   acObj["seen_pos"] = true;
 
-  DynamicJsonDocument doc(8192);  // ~8KB; filtered and single-aircraft
+  DynamicJsonDocument doc(12288);  // filtered; may include multiple aircraft
   // Prefer streamed parsing to minimize RAM and fragmentation
   DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
   http.end();
@@ -671,37 +687,75 @@ static bool fetchNearestFlight(FlightInfo &out) {
     return false;
   }
 
-  FlightInfo closest = parseClosest(doc.as<JsonVariant>());
-  if (closest.valid) {
-    LOG_INFO("Closest %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
-    // Classify operation (MIL/COM/PVT)
-    closest.opClass = classifyOp(closest);
-    LOG_INFO("Classified op: %s", closest.opClass.c_str());
-    if (FEATURE_ROUTE_LOOKUP && closest.hasCallsign) {
-      bool cacheOk = false;
-      if (g_routeCache.callsign == closest.ident &&
-          (millis() - g_routeCache.ts) < ROUTE_CACHE_TTL_MS &&
-          g_routeCache.route.length()) {
-        closest.route = g_routeCache.route;
-        cacheOk = true;
+  JsonVariant root = doc.as<JsonVariant>();
+  if (!root.is<JsonObject>() || !root.as<JsonObject>()["ac"].is<JsonArray>()) {
+    LOG_INFO("No valid aircraft list in response");
+    return false;
+  }
+  JsonArray ac = root.as<JsonObject>()["ac"].as<JsonArray>();
+
+  FlightInfo bestAir;
+  FlightInfo bestGround;
+  bool hasAir = false;
+  bool hasGround = false;
+  for (JsonVariant v : ac) {
+    if (!v.is<JsonObject>()) continue;
+    FlightInfo fi;
+    if (!parseAircraft(v.as<JsonObject>(), fi)) continue;
+    bool inFlight = fi.altitudeFt > 0;
+    if (inFlight) {
+      if (!hasAir || fi.distanceKm < bestAir.distanceKm) {
+        bestAir = fi;
+        hasAir = true;
       }
-      if (!cacheOk) {
-        String route;
-        if (fetchRouteByCallsign(closest.ident, closest.lat, closest.lon, route)) {
-          closest.route = route;
-          g_routeCache.callsign = closest.ident;
-          g_routeCache.route = route;
-          g_routeCache.ts = millis();
-        } else {
-          LOG_WARN("Route lookup failed for %s", closest.ident.c_str());
-        }
+    } else {
+      if (!hasGround || fi.distanceKm < bestGround.distanceKm) {
+        bestGround = fi;
+        hasGround = true;
       }
     }
-    out = closest;
-    return true;
   }
-  LOG_INFO("No valid aircraft found in response");
-  return false;
+
+  if (!hasAir && !hasGround) {
+    LOG_INFO("No valid aircraft found in response");
+    return false;
+  }
+
+  FlightInfo closest = hasAir ? bestAir : bestGround;
+  if (hasAir) {
+    LOG_INFO("Closest airborne %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+  } else {
+    LOG_INFO("Closest grounded %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+  }
+
+  // Classify operation (MIL/COM/PVT)
+  closest.opClass = classifyOp(closest);
+  LOG_INFO("Classified op: %s", closest.opClass.c_str());
+  if (FEATURE_ROUTE_LOOKUP && closest.hasCallsign) {
+    bool cacheOk = false;
+    if (g_routeCache.callsign == closest.ident &&
+        (millis() - g_routeCache.ts) < ROUTE_CACHE_TTL_MS &&
+        g_routeCache.route.length()) {
+      closest.route = g_routeCache.route;
+      cacheOk = true;
+      LOG_INFO("Route cache hit for %s", closest.ident.c_str());
+    }
+    if (!cacheOk) {
+      String route;
+      if (fetchRouteByCallsign(closest.ident, closest.lat, closest.lon, route)) {
+        closest.route = route;
+        g_routeCache.callsign = closest.ident;
+        g_routeCache.route = route;
+        g_routeCache.ts = millis();
+      } else {
+        LOG_WARN("Route lookup failed for %s", closest.ident.c_str());
+      }
+    }
+  } else if (FEATURE_ROUTE_LOOKUP && !closest.hasCallsign) {
+    LOG_INFO("Route lookup skipped: no callsign for %s", closest.ident.c_str());
+  }
+  out = closest;
+  return true;
 }
 
 // -----------------------------
