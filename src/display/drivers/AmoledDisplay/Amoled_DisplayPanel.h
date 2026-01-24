@@ -23,15 +23,7 @@
 #include <display/drivers/common/Display.h>
 #include <display/drivers/common/ext.h>
 
-#ifndef AMOLED_TOUCH_ENABLED
-#define AMOLED_TOUCH_ENABLED 0
-#endif
-
-#if AMOLED_TOUCH_ENABLED
 #include <TouchDrvInterface.hpp>
-#else
-class TouchDrvInterface;
-#endif
 
 enum Amoled_Display_Panel_Type {
     DISPLAY_UNKNOWN,

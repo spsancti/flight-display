@@ -15,11 +15,15 @@
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 #include <WebServer.h>
+#include <Wire.h>
 #include <lvgl.h>
 #include "display/drivers/common/LV_Helper.h"
 #include <cstring>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #if defined(ESP32)
 #include <esp_system.h>
+#include <esp_adc_cal.h>
 #endif
 
 #if __has_include("config.h")
@@ -59,6 +63,7 @@ static bool milCacheLookup(const String &hex, bool &outIsMil);
 static void milCacheStore(const String &hex, bool isMil);
 static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
 static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute);
+static void fetchTask(void *arg);
 
 // Boot staging: allow power to settle before Wi-Fi/TLS ramps current
 #ifndef BOOT_POWER_SETTLE_MS
@@ -100,6 +105,15 @@ static bool fetchRouteByCallsign(const String &callsign, double lat, double lon,
 #ifndef AMOLED_COLOR_ORDER
 #define AMOLED_COLOR_ORDER ORDER_RGB
 #endif
+#ifndef TOUCH_BRIGHTNESS_MAX
+#define TOUCH_BRIGHTNESS_MAX 12
+#endif
+#ifndef TOUCH_BRIGHTNESS_MIN
+#define TOUCH_BRIGHTNESS_MIN 2
+#endif
+#ifndef TOUCH_BRIGHTNESS_MS
+#define TOUCH_BRIGHTNESS_MS 30000
+#endif
 
 #if AMOLED_PANEL_WAVESHARE
 constexpr AmoledHwConfig kHwConfig = WAVESHARE_S3_AMOLED_HW_CONFIG;
@@ -115,6 +129,13 @@ static int16_t g_centerX = 0;
 static int16_t g_centerY = 0;
 static int16_t g_safeRadius = 0;
 static bool g_displayReady = false;
+static uint32_t g_lastTouchMs = 0;
+static bool g_touchBoost = false;
+static uint8_t g_lastBrightness = 0;
+static portMUX_TYPE g_flightMux = portMUX_INITIALIZER_UNLOCKED;
+static FlightInfo g_pendingFlight;
+static bool g_pendingValid = false;
+static uint32_t g_pendingSeq = 0;
 
 static const uint32_t FETCH_INTERVAL_MS = 3000;        // 30s between API calls
 static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;  // HTTP connect timeout
@@ -242,6 +263,12 @@ static void waitMs(uint32_t durationMs) {
   while ((int32_t)(millis() - start) < (int32_t)durationMs) {
     yield();
   }
+}
+
+static uint8_t clampBrightness(int value) {
+  if (value < 1) return 1;
+  if (value > 16) return 16;
+  return static_cast<uint8_t>(value);
 }
 
 static void initUiColors() {
@@ -758,6 +785,33 @@ static bool fetchNearestFlight(FlightInfo &out) {
   return true;
 }
 
+static void fetchTask(void *arg) {
+  (void)arg;
+  uint32_t lastFetch = 0;
+  for (;;) {
+    uint32_t now = millis();
+    if ((int32_t)(now - lastFetch) >= (int32_t)FETCH_INTERVAL_MS || lastFetch == 0) {
+      lastFetch = now;
+#if FEATURE_TEST_ENDPOINT
+      if (g_test.active && (int32_t)(millis() - g_test.expiresAt) < 0) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+        continue;
+      }
+#endif
+      FlightInfo fi;
+      bool ok = fetchNearestFlight(fi);
+      portENTER_CRITICAL(&g_flightMux);
+      g_pendingValid = ok;
+      if (ok) {
+        g_pendingFlight = fi;
+      }
+      g_pendingSeq++;
+      portEXIT_CRITICAL(&g_flightMux);
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+
 // -----------------------------
 // MIL cache helpers
 // -----------------------------
@@ -942,7 +996,8 @@ static void httpStartOnce() {
 static bool initDisplay() {
   for (uint8_t attempt = 0; attempt < 4; ++attempt) {
     if (g_panel.begin(AMOLED_COLOR_ORDER)) {
-      g_panel.setBrightness(AMOLED_BRIGHTNESS);
+      g_panel.setBrightness(clampBrightness(TOUCH_BRIGHTNESS_MIN));
+      g_lastBrightness = clampBrightness(TOUCH_BRIGHTNESS_MIN);
       g_gfx = g_panel.gfx();
       g_screenW = g_panel.width();
       g_screenH = g_panel.height();
@@ -1049,6 +1104,8 @@ void setup() {
     renderSplash("Booting...");
   }
 
+  xTaskCreatePinnedToCore(fetchTask, "fetchTask", 8192, nullptr, 1, nullptr, 0);
+
   // Wi-Fi event logging and dynamic power management
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
@@ -1096,11 +1153,38 @@ void setup() {
 
 
 void loop() {
-  static uint32_t lastFetch = 0;
   static uint32_t lastLvgl = 0;
+  static bool lastTouch = false;
+  static uint32_t lastSeq = 0;
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
+  }
+
+  uint32_t now = millis();
+  if (g_displayReady && TOUCH_BRIGHTNESS_MS > 0) {
+    bool touched = g_panel.isPressed();
+    if (touched != lastTouch) {
+      LOG_INFO("Touch %s", touched ? "ON" : "OFF");
+      lastTouch = touched;
+    }
+    if (touched) {
+      g_lastTouchMs = now;
+      uint8_t maxB = clampBrightness(TOUCH_BRIGHTNESS_MAX);
+      if (!g_touchBoost || g_lastBrightness != maxB) {
+        g_panel.setBrightness(maxB);
+        g_lastBrightness = maxB;
+      }
+      g_touchBoost = true;
+    }
+    if (g_touchBoost && (int32_t)(now - g_lastTouchMs) >= (int32_t)TOUCH_BRIGHTNESS_MS) {
+      uint8_t minB = clampBrightness(TOUCH_BRIGHTNESS_MIN);
+      if (g_lastBrightness != minB) {
+        g_panel.setBrightness(minB);
+        g_lastBrightness = minB;
+      }
+      g_touchBoost = false;
+    }
   }
 
 #if FEATURE_TEST_ENDPOINT
@@ -1123,24 +1207,30 @@ void loop() {
   }
 #endif
 
-  if (millis() - lastFetch >= FETCH_INTERVAL_MS || lastFetch == 0) {
-    lastFetch = millis();
-    FlightInfo nearest;
-    if (fetchNearestFlight(nearest)) {
-      if (!g_haveDisplayed || !sameFlightDisplay(nearest, g_lastShown)) {
-        renderFlight(nearest);
-        g_lastShown = nearest;
+  uint32_t seq = 0;
+  bool pendingValid = false;
+  FlightInfo pending;
+  portENTER_CRITICAL(&g_flightMux);
+  seq = g_pendingSeq;
+  pendingValid = g_pendingValid;
+  if (pendingValid) {
+    pending = g_pendingFlight;
+  }
+  portEXIT_CRITICAL(&g_flightMux);
+  if (seq != lastSeq) {
+    lastSeq = seq;
+    if (pendingValid) {
+      if (!g_haveDisplayed || !sameFlightDisplay(pending, g_lastShown)) {
+        renderFlight(pending);
+        g_lastShown = pending;
         g_haveDisplayed = true;
       }
-    } else {
-      if (!g_haveDisplayed) {
-        renderNoData("Check Wi-Fi/API");
-      }
+    } else if (!g_haveDisplayed) {
+      renderNoData("Check Wi-Fi/API");
     }
   }
 
   if (g_lvReady) {
-    uint32_t now = millis();
     if (now - lastLvgl >= 5) {
       lv_timer_handler();
       lastLvgl = now;

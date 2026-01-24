@@ -1,6 +1,7 @@
 #include "Amoled_DisplayPanel.h"
 #include "Arduino_GFX_Library.h"
 #include "pin_config.h"
+#include <Wire.h>
 #include <esp_adc_cal.h>
 #include <esp_log.h>
 
@@ -20,12 +21,10 @@ Amoled_DisplayPanel::Amoled_DisplayPanel(AmoledHwConfig hw_config)
 Amoled_DisplayPanel::~Amoled_DisplayPanel() {
     uninstallSD();
 
-#if AMOLED_TOUCH_ENABLED
     if (_touchDrv) {
         delete _touchDrv;
         _touchDrv = nullptr;
     }
-#endif
     if (display) {
         display->setBrightness(0);
         digitalWrite(hwConfig.lcd_en, LOW);
@@ -41,14 +40,10 @@ Amoled_DisplayPanel::~Amoled_DisplayPanel() {
 bool Amoled_DisplayPanel::begin(Amoled_Display_Panel_Color_Order order) {
     bool display_ok = true;
 
-#if AMOLED_TOUCH_ENABLED
     if (!initTouch()) {
         // Touch is optional for rendering; keep the display usable if touch fails.
         ESP_LOGW("Amoled_DisplayPanel", "Touch init failed; continuing without touch");
     }
-#else
-    touchType = TOUCH_UNKNOWN;
-#endif
     display_ok &= initDisplay(order);
 
     return display_ok;
@@ -94,11 +89,7 @@ uint8_t Amoled_DisplayPanel::getBrightness() { return (this->currentBrightness +
 Amoled_Display_Panel_Type Amoled_DisplayPanel::getModel() { return panelType; }
 
 const char *Amoled_DisplayPanel::getTouchModelName() {
-#if AMOLED_TOUCH_ENABLED
     return _touchDrv ? _touchDrv->getModelName() : "unknown";
-#else
-    return "disabled";
-#endif
 }
 
 void Amoled_DisplayPanel::enableTouchWakeup() { _wakeupMethod = WAKEUP_FROM_TOUCH; }
@@ -117,7 +108,6 @@ void Amoled_DisplayPanel::sleep() {
 
     setBrightness(0);
 
-#if AMOLED_TOUCH_ENABLED
     if (WAKEUP_FROM_TOUCH != _wakeupMethod) {
         if (_touchDrv) {
             pinMode(hwConfig.tp_int, OUTPUT);
@@ -126,11 +116,9 @@ void Amoled_DisplayPanel::sleep() {
             _touchDrv->sleep();
         }
     }
-#endif
 
     switch (_wakeupMethod) {
     case WAKEUP_FROM_TOUCH: {
-#if AMOLED_TOUCH_ENABLED
         int16_t x_array[1];
         int16_t y_array[1];
         uint8_t get_point = 1;
@@ -145,9 +133,6 @@ void Amoled_DisplayPanel::sleep() {
 
         waitMs(2000); // Wait for the interrupt level to stabilize
         esp_sleep_enable_ext1_wakeup(_BV(hwConfig.tp_int), ESP_EXT1_WAKEUP_ANY_LOW);
-#else
-        esp_sleep_enable_ext1_wakeup(_BV(0), ESP_EXT1_WAKEUP_ANY_LOW);
-#endif
     } break;
     case WAKEUP_FROM_BUTTON:
         esp_sleep_enable_ext1_wakeup(_BV(0), ESP_EXT1_WAKEUP_ANY_LOW);
@@ -173,18 +158,11 @@ void Amoled_DisplayPanel::sleep() {
 void Amoled_DisplayPanel::wakeup() {}
 
 uint8_t Amoled_DisplayPanel::getPoint(int16_t *x_array, int16_t *y_array, uint8_t get_point) {
-#if !AMOLED_TOUCH_ENABLED
-    (void)x_array;
-    (void)y_array;
-    (void)get_point;
-    return 0;
-#else
-    if (touchType == TOUCH_CST92XX) {
-        return _touchDrv->getPoint(x_array, y_array, _touchDrv->getSupportTouchPoint());
-    }
-
     if (!_touchDrv || !_touchDrv->isPressed()) {
         return 0;
+    }
+    if (touchType == TOUCH_CST92XX) {
+        return _touchDrv->getPoint(x_array, y_array, _touchDrv->getSupportTouchPoint());
     }
 
     uint8_t points = _touchDrv->getPoint(x_array, y_array, get_point);
@@ -214,18 +192,13 @@ uint8_t Amoled_DisplayPanel::getPoint(int16_t *x_array, int16_t *y_array, uint8_
     }
 
     return points;
-#endif
 }
 
 bool Amoled_DisplayPanel::isPressed() {
-#if AMOLED_TOUCH_ENABLED
     if (_touchDrv) {
         return _touchDrv->isPressed();
     }
     return 0;
-#else
-    return false;
-#endif
 }
 
 uint16_t Amoled_DisplayPanel::getBattVoltage(void) {
@@ -261,15 +234,14 @@ void Amoled_DisplayPanel::setRotation(uint8_t rotation) {
 }
 
 bool Amoled_DisplayPanel::initTouch() {
-#if !AMOLED_TOUCH_ENABLED
-    return true;
-#else
-    TouchDrvCST92xx *tmp = new TouchDrvCST92xx();
+    TouchDrvCSTXXX *tmp = new TouchDrvCSTXXX();
     tmp->setPins(hwConfig.tp_rst, hwConfig.tp_int);
 
     if (tmp->begin(Wire, CST92XX_DEVICE_ADDRESS, hwConfig.i2c_sda, hwConfig.i2c_scl)) {
         _touchDrv = tmp;
         ESP_LOGI("Amoled_DisplayPanel", "Successfully initialized %s!\n", _touchDrv->getModelName());
+        Wire.setClock(100000);
+        Wire.setTimeOut(50);
         tmp->setMaxCoordinates(466, 466);
         if (hwConfig.mirror_touch) {
             tmp->setMirrorXY(true, true);
@@ -289,6 +261,8 @@ bool Amoled_DisplayPanel::initTouch() {
 
         _touchDrv = tmp2;
         ESP_LOGI("Amoled_DisplayPanel", "Successfully initialized %s!\n", _touchDrv->getModelName());
+        Wire.setClock(100000);
+        Wire.setTimeOut(50);
 
         touchType = TOUCH_FT3168;
         panelType = DISPLAY_1_43_INCHES;
@@ -298,7 +272,6 @@ bool Amoled_DisplayPanel::initTouch() {
 
     ESP_LOGE("Amoled_DisplayPanel", "Unable to find touch device.");
     return false;
-#endif
 }
 
 bool Amoled_DisplayPanel::initDisplay(Amoled_Display_Panel_Color_Order colorOrder) {
