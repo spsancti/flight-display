@@ -12,6 +12,43 @@ static void waitMs(uint32_t durationMs) {
     }
 }
 
+static bool g_touchWireStarted = false;
+
+static void pinInputIfValid(int8_t pin) {
+    if (pin >= 0) {
+        pinMode(pin, INPUT);
+    }
+}
+
+static void pinOutputLowIfValid(int8_t pin) {
+    if (pin >= 0) {
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, LOW);
+    }
+}
+
+static void touchResetIfAvailable(const AmoledHwConfig &hwConfig) {
+    if (hwConfig.tp_rst < 0) {
+        return;
+    }
+    pinMode(hwConfig.tp_rst, OUTPUT);
+    digitalWrite(hwConfig.tp_rst, LOW);
+    waitMs(10);
+    digitalWrite(hwConfig.tp_rst, HIGH);
+    waitMs(10);
+}
+
+static void touchPrepareIntPin(const AmoledHwConfig &hwConfig) {
+    if (hwConfig.tp_int < 0) {
+        return;
+    }
+    if (hwConfig.tp_rst < 0) {
+        pinMode(hwConfig.tp_int, INPUT_PULLUP);
+    } else {
+        pinMode(hwConfig.tp_int, INPUT);
+    }
+}
+
 Amoled_DisplayPanel::Amoled_DisplayPanel(AmoledHwConfig hw_config)
     : hwConfig(hw_config), displayBus(nullptr), display(nullptr), _touchDrv(nullptr), _wakeupMethod(WAKEUP_FROM_NONE),
       _sleepTimeUs(0), currentBrightness(0) {
@@ -39,6 +76,7 @@ Amoled_DisplayPanel::~Amoled_DisplayPanel() {
 
 bool Amoled_DisplayPanel::begin(Amoled_Display_Panel_Color_Order order) {
     bool display_ok = true;
+    colorOrder = order;
 
     if (!initTouch()) {
         // Touch is optional for rendering; keep the display usable if touch fails.
@@ -50,6 +88,9 @@ bool Amoled_DisplayPanel::begin(Amoled_Display_Panel_Color_Order order) {
 }
 
 bool Amoled_DisplayPanel::installSD() {
+    if (hwConfig.sd_cs < 0 || hwConfig.sd_sclk < 0 || hwConfig.sd_mosi < 0 || hwConfig.sd_miso < 0) {
+        return false;
+    }
     pinMode(hwConfig.sd_cs, OUTPUT);
     digitalWrite(hwConfig.sd_cs, HIGH);
 
@@ -59,6 +100,9 @@ bool Amoled_DisplayPanel::installSD() {
 }
 
 void Amoled_DisplayPanel::uninstallSD() {
+    if (hwConfig.sd_cs < 0) {
+        return;
+    }
     SD_MMC.end();
     digitalWrite(hwConfig.sd_cs, LOW);
     pinMode(hwConfig.sd_cs, INPUT);
@@ -106,14 +150,24 @@ void Amoled_DisplayPanel::sleep() {
         return;
     }
 
+    sleepBrightnessLevel = getBrightness();
     setBrightness(0);
+    if (display) {
+        display->displayOff();
+    }
+    pinOutputLowIfValid(hwConfig.lcd_en);
+    uninstallSD();
 
     if (WAKEUP_FROM_TOUCH != _wakeupMethod) {
         if (_touchDrv) {
             pinMode(hwConfig.tp_int, OUTPUT);
             digitalWrite(hwConfig.tp_int, LOW); // Before touch to set sleep, it is necessary to set INT to LOW
-
-            _touchDrv->sleep();
+            if (hwConfig.tp_rst >= 0) {
+                _touchDrv->sleep();
+                delete _touchDrv;
+                _touchDrv = nullptr;
+                touchType = TOUCH_UNKNOWN;
+            }
         }
     }
 
@@ -146,16 +200,60 @@ void Amoled_DisplayPanel::sleep() {
         break;
     }
 
+    pinInputIfValid(hwConfig.lcd_cs);
+    pinInputIfValid(hwConfig.lcd_sclk);
+    pinInputIfValid(hwConfig.lcd_sdio0);
+    pinInputIfValid(hwConfig.lcd_sdio1);
+    pinInputIfValid(hwConfig.lcd_sdio2);
+    pinInputIfValid(hwConfig.lcd_sdio3);
+    pinInputIfValid(hwConfig.lcd_rst);
+    pinInputIfValid(hwConfig.sd_cs);
+    pinInputIfValid(hwConfig.sd_sclk);
+    pinInputIfValid(hwConfig.sd_mosi);
+    pinInputIfValid(hwConfig.sd_miso);
+
     Wire.end();
 
-    pinMode(hwConfig.i2c_scl, OPEN_DRAIN);
-    pinMode(hwConfig.i2c_sda, OPEN_DRAIN);
+    pinInputIfValid(hwConfig.i2c_scl);
+    pinInputIfValid(hwConfig.i2c_sda);
 
     Serial.end();
 
     esp_deep_sleep_start();
 }
-void Amoled_DisplayPanel::wakeup() {}
+
+bool Amoled_DisplayPanel::wakeup() {
+    if (hwConfig.lcd_en >= 0) {
+        pinMode(hwConfig.lcd_en, OUTPUT);
+        digitalWrite(hwConfig.lcd_en, HIGH);
+    }
+
+    // Re-init touch on wake (tp_rst may not be wired).
+    if (_touchDrv) {
+        delete _touchDrv;
+        _touchDrv = nullptr;
+    }
+    if (!initTouch()) {
+        ESP_LOGW("Amoled_DisplayPanel", "Touch init failed on wakeup");
+    }
+
+    if (!initDisplay(colorOrder)) {
+        ESP_LOGW("Amoled_DisplayPanel", "Display init failed on wakeup");
+        return false;
+    }
+
+    if (hwConfig.default_rotation >= 0) {
+        setRotation(hwConfig.default_rotation);
+    } else if (panelType == DISPLAY_1_75_INCHES) {
+        setRotation(hwConfig.rotation_175);
+    } else {
+        setRotation(0);
+    }
+    if (sleepBrightnessLevel > 0) {
+        setBrightness(sleepBrightnessLevel);
+    }
+    return true;
+}
 
 uint8_t Amoled_DisplayPanel::getPoint(int16_t *x_array, int16_t *y_array, uint8_t get_point) {
     if (!_touchDrv || !_touchDrv->isPressed()) {
@@ -234,41 +332,61 @@ void Amoled_DisplayPanel::setRotation(uint8_t rotation) {
 }
 
 bool Amoled_DisplayPanel::initTouch() {
-    TouchDrvCSTXXX *tmp = new TouchDrvCSTXXX();
-    tmp->setPins(hwConfig.tp_rst, hwConfig.tp_int);
-
-    if (tmp->begin(Wire, CST92XX_DEVICE_ADDRESS, hwConfig.i2c_sda, hwConfig.i2c_scl)) {
-        _touchDrv = tmp;
-        ESP_LOGI("Amoled_DisplayPanel", "Successfully initialized %s!\n", _touchDrv->getModelName());
-        Wire.setClock(100000);
-        Wire.setTimeOut(50);
-        tmp->setMaxCoordinates(466, 466);
-        if (hwConfig.mirror_touch) {
-            tmp->setMirrorXY(true, true);
+    if (!g_touchWireStarted) {
+        Wire.begin(hwConfig.i2c_sda, hwConfig.i2c_scl);
+        g_touchWireStarted = true;
+    }
+    touchResetIfAvailable(hwConfig);
+    touchPrepareIntPin(hwConfig);
+    auto tryFt = [&](uint8_t addr) -> bool {
+        TouchDrvFT6X36 *tmp2 = new TouchDrvFT6X36();
+        tmp2->setPins(hwConfig.tp_rst, hwConfig.tp_int);
+        if (tmp2->begin(Wire, addr, hwConfig.i2c_sda, hwConfig.i2c_scl)) {
+            tmp2->interruptTrigger();
+            _touchDrv = tmp2;
+            ESP_LOGI("Amoled_DisplayPanel", "Touch FT init ok addr=0x%02X model=%s", addr,
+                     _touchDrv->getModelName());
+            Wire.setClock(100000);
+            Wire.setTimeOut(50);
+            touchType = TOUCH_FT3168;
+            panelType = DISPLAY_1_43_INCHES;
+            return true;
         }
+        delete tmp2;
+        return false;
+    };
 
-        touchType = TOUCH_CST92XX;
-        panelType = DISPLAY_1_75_INCHES;
+    auto tryCst = [&](uint8_t addr) -> bool {
+        TouchDrvCSTXXX *tmp = new TouchDrvCSTXXX();
+        tmp->setPins(hwConfig.tp_rst, hwConfig.tp_int);
+        if (tmp->begin(Wire, addr, hwConfig.i2c_sda, hwConfig.i2c_scl)) {
+            _touchDrv = tmp;
+            ESP_LOGI("Amoled_DisplayPanel", "Touch CST init ok addr=0x%02X model=%s", addr,
+                     _touchDrv->getModelName());
+            Wire.setClock(100000);
+            Wire.setTimeOut(50);
+            tmp->setMaxCoordinates(466, 466);
+            if (hwConfig.mirror_touch) {
+                tmp->setMirrorXY(true, true);
+            }
+            touchType = TOUCH_CST92XX;
+            panelType = DISPLAY_1_75_INCHES;
+            return true;
+        }
+        delete tmp;
+        return false;
+    };
+
+    if (tryFt(FT3168_DEVICE_ADDRESS)) {
         return true;
     }
-    delete tmp;
-
-    TouchDrvFT6X36 *tmp2 = new TouchDrvFT6X36();
-    tmp2->setPins(hwConfig.tp_rst, hwConfig.tp_int);
-
-    if (tmp2->begin(Wire, FT3168_DEVICE_ADDRESS, hwConfig.i2c_sda, hwConfig.i2c_scl)) {
-        tmp2->interruptTrigger();
-
-        _touchDrv = tmp2;
-        ESP_LOGI("Amoled_DisplayPanel", "Successfully initialized %s!\n", _touchDrv->getModelName());
-        Wire.setClock(100000);
-        Wire.setTimeOut(50);
-
-        touchType = TOUCH_FT3168;
-        panelType = DISPLAY_1_43_INCHES;
+    // CST controllers often use 0x15; keep 0x5A as fallback.
+    if (tryCst(0x15)) {
         return true;
     }
-    delete tmp2;
+    if (tryCst(CST92XX_DEVICE_ADDRESS)) {
+        return true;
+    }
 
     ESP_LOGE("Amoled_DisplayPanel", "Unable to find touch device.");
     return false;
@@ -294,15 +412,19 @@ bool Amoled_DisplayPanel::initDisplay(Amoled_Display_Panel_Color_Order colorOrde
         return false;
     }
 
-    switch (panelType) {
-    case DISPLAY_1_75_INCHES:
-        setRotation(hwConfig.rotation_175);
-        break;
-    case DISPLAY_1_43_INCHES:
-    case DISPLAY_UNKNOWN:
-    default:
-        setRotation(0);
-        break;
+    if (hwConfig.default_rotation >= 0) {
+        setRotation(hwConfig.default_rotation);
+    } else {
+        switch (panelType) {
+        case DISPLAY_1_75_INCHES:
+            setRotation(hwConfig.rotation_175);
+            break;
+        case DISPLAY_1_43_INCHES:
+        case DISPLAY_UNKNOWN:
+        default:
+            setRotation(0);
+            break;
+        }
     }
 
     // required for correct GRAM initialization

@@ -114,6 +114,15 @@ static void fetchTask(void *arg);
 #ifndef TOUCH_BRIGHTNESS_MS
 #define TOUCH_BRIGHTNESS_MS 30000
 #endif
+#ifndef TOUCH_IDLE_SLEEP_MS
+#define TOUCH_IDLE_SLEEP_MS (15UL * 60UL * 1000UL)
+#endif
+#ifndef SLEEP_BUTTON_PIN
+#define SLEEP_BUTTON_PIN 0
+#endif
+#ifndef SLEEP_HOLD_MS
+#define SLEEP_HOLD_MS 1500
+#endif
 
 #if AMOLED_PANEL_WAVESHARE
 constexpr AmoledHwConfig kHwConfig = WAVESHARE_S3_AMOLED_HW_CONFIG;
@@ -132,6 +141,7 @@ static bool g_displayReady = false;
 static uint32_t g_lastTouchMs = 0;
 static bool g_touchBoost = false;
 static uint8_t g_lastBrightness = 0;
+static uint32_t g_sleepHoldStartMs = 0;
 static portMUX_TYPE g_flightMux = portMUX_INITIALIZER_UNLOCKED;
 static FlightInfo g_pendingFlight;
 static bool g_pendingValid = false;
@@ -1014,6 +1024,21 @@ static bool initDisplay() {
   return false;
 }
 
+static bool initDisplayFromPanelReady() {
+  g_gfx = g_panel.gfx();
+  if (!g_gfx) return false;
+  g_screenW = g_panel.width();
+  g_screenH = g_panel.height();
+  g_centerX = g_screenW / 2;
+  g_centerY = g_screenH / 2;
+  g_safeRadius = min(g_centerX, g_centerY) - 18;
+  initUiColors();
+  g_gfx->fillScreen(g_colors.bg);
+  g_displayReady = true;
+  g_lastBrightness = clampBrightness(g_panel.getBrightness());
+  return true;
+}
+
 static void renderFlight(const FlightInfo &fi) {
   if (!g_displayReady || !g_lvReady) return;
 
@@ -1074,6 +1099,7 @@ void setup() {
   Serial.println(F("\n[Boot] Flight Display starting..."));
 #if defined(ESP32)
   auto rr = esp_reset_reason();
+  bool wokeFromSleep = (rr == ESP_RST_DEEPSLEEP);
   Serial.print(F("[Boot] Reset reason: "));
   switch (rr) {
     case ESP_RST_POWERON: Serial.println(F("POWERON")); break;
@@ -1090,7 +1116,24 @@ void setup() {
   }
 #endif
 
-  if (!initDisplay()) {
+  bool displayOk = false;
+#if defined(ESP32)
+  if (wokeFromSleep) {
+    displayOk = g_panel.wakeup();
+    if (displayOk) {
+      displayOk = initDisplayFromPanelReady();
+      if (displayOk) {
+        g_panel.setBrightness(clampBrightness(TOUCH_BRIGHTNESS_MIN));
+        g_lastBrightness = clampBrightness(TOUCH_BRIGHTNESS_MIN);
+        Serial.println(F("[Display] Wakeup complete"));
+      }
+    }
+  }
+#endif
+  if (!displayOk) {
+    displayOk = initDisplay();
+  }
+  if (!displayOk) {
     while (true) {
       Serial.println(F("[Display] AMOLED init failed"));
       delay(1000);
@@ -1103,6 +1146,9 @@ void setup() {
     uiInit();
     renderSplash("Booting...");
   }
+
+  pinMode(SLEEP_BUTTON_PIN, INPUT_PULLUP);
+  g_lastTouchMs = millis();
 
   xTaskCreatePinnedToCore(fetchTask, "fetchTask", 8192, nullptr, 1, nullptr, 0);
 
@@ -1185,6 +1231,35 @@ void loop() {
       }
       g_touchBoost = false;
     }
+  }
+
+  if (g_displayReady && TOUCH_IDLE_SLEEP_MS > 0) {
+    if ((int32_t)(now - g_lastTouchMs) >= (int32_t)TOUCH_IDLE_SLEEP_MS) {
+      LOG_INFO("Idle timeout reached; entering deep sleep");
+      g_panel.enableTouchWakeup();
+      g_panel.sleep();
+    }
+  }
+
+  if (digitalRead(SLEEP_BUTTON_PIN) == LOW) {
+    if (g_sleepHoldStartMs == 0) g_sleepHoldStartMs = now;
+    if ((int32_t)(now - g_sleepHoldStartMs) >= (int32_t)SLEEP_HOLD_MS) {
+      LOG_INFO("Sleep button held; entering deep sleep");
+      g_panel.enableButtonWakeup();
+      // Avoid immediate wake if the button is still held low.
+      uint32_t releaseStart = millis();
+      while (digitalRead(SLEEP_BUTTON_PIN) == LOW) {
+        if ((int32_t)(millis() - releaseStart) > 2000) {
+          LOG_WARN("Sleep aborted; button still held");
+          g_sleepHoldStartMs = 0;
+          return;
+        }
+        waitMs(20);
+      }
+      g_panel.sleep();
+    }
+  } else {
+    g_sleepHoldStartMs = 0;
   }
 
 #if FEATURE_TEST_ENDPOINT

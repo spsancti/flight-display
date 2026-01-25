@@ -24,6 +24,7 @@ struct AmoledHwConfig {
     int8_t sd_sclk;
     int8_t pcf8563_int;
     int8_t rotation_175;
+    int8_t default_rotation;
     bool mirror_touch;
 };
 
@@ -51,6 +52,7 @@ constexpr AmoledHwConfig LILYGO_T_DISPLAY_S3_DS_HW_CONFIG{
     .sd_sclk = 41,
     .pcf8563_int = 9,
     .rotation_175 = 2,
+    .default_rotation = 2,
     .mirror_touch = false,
 };
 
@@ -78,6 +80,7 @@ constexpr AmoledHwConfig WAVESHARE_S3_AMOLED_HW_CONFIG{
     .sd_sclk = 2,
     .pcf8563_int = -1,
     .rotation_175 = 0,
+    .default_rotation = 0,
     .mirror_touch = true,
 };
 

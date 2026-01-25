@@ -76,7 +76,7 @@ class Amoled_DisplayPanel : public Display {
 
     void sleep();
 
-    void wakeup();
+    bool wakeup();
 
     uint16_t width() override { return hwConfig.lcd_width; };
 
@@ -107,6 +107,8 @@ class Amoled_DisplayPanel : public Display {
     CO5300 *display = nullptr;
 
     uint8_t currentBrightness = 0;
+    uint8_t sleepBrightnessLevel = 0;
+    Amoled_Display_Panel_Color_Order colorOrder = ORDER_RGB;
 
     Amoled_Display_Panel_Type panelType = DISPLAY_UNKNOWN;
     Amoled_Display_Panel_TouchType touchType = TOUCH_UNKNOWN;
