@@ -6,6 +6,7 @@
  *
  */
 #include "LV_Helper.h"
+#include "log.h"
 
 #if LV_VERSION_CHECK(9, 0, 0)
 #error "LVGL 9.x not supported"
@@ -49,8 +50,7 @@ static void touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
 
 #if LV_USE_LOG
 static void lv_log_print_g_cb(const char *buf) {
-  Serial.println(buf);
-  Serial.flush();
+  LOG_INFO("%s", buf);
 }
 #endif
 
@@ -79,7 +79,7 @@ void beginLvglHelper(Display &board, bool debug) {
   buf = reinterpret_cast<lv_color_t *>(ps_malloc(lv_buffer_size));
   buf1 = reinterpret_cast<lv_color_t *>(ps_malloc(lv_buffer_size));
   if (!buf || !buf1) {
-    Serial.println(F("[LVGL] Buffer allocation failed"));
+    LOG_ERROR("LVGL buffer allocation failed");
     return;
   }
 

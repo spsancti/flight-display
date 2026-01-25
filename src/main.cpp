@@ -542,8 +542,7 @@ static void connectWiFi() {
   if (!wifiInitialized) return;
   // Begin only once; rely on auto-reconnect afterwards
   if (wifiEverBegun) return;
-  Serial.print("[WiFi] Connecting to ");
-  Serial.println(WIFI_SSID);
+  LOG_INFO("WiFi connecting to %s", WIFI_SSID);
   if (g_displayReady) {
     renderSplash("Connecting Wi-Fi...", WIFI_SSID);
   }
@@ -680,7 +679,7 @@ static bool fetchNearestFlight(FlightInfo &out) {
   uint32_t clientTimeoutSec = (HTTP_READ_TIMEOUT_MS + 999) / 1000;
   client.setTimeout(clientTimeoutSec);
   if (!http.begin(client, url)) {
-    Serial.println("[HTTP] begin() failed (TLS)");
+    LOG_ERROR("HTTP begin failed (TLS)");
     return false;
   }
   http.addHeader("Accept", "application/json");
@@ -999,7 +998,7 @@ static void httpStartOnce() {
   });
   g_http.begin();
   g_httpStarted = true;
-  Serial.println(F("[HTTP] Test endpoint ready: PUT /test/closest"));
+  LOG_INFO("HTTP test endpoint ready: PUT /test/closest");
 }
 #endif
 
@@ -1096,24 +1095,25 @@ static void renderFlight(const FlightInfo &fi) {
 void setup() {
   Serial.begin(115200);
   waitMs(20);
-  Serial.println(F("\n[Boot] Flight Display starting..."));
+  LOG_INFO("Boot: Flight Display starting...");
 #if defined(ESP32)
   auto rr = esp_reset_reason();
   bool wokeFromSleep = (rr == ESP_RST_DEEPSLEEP);
-  Serial.print(F("[Boot] Reset reason: "));
+  const char *rrStr = "UNKNOWN";
   switch (rr) {
-    case ESP_RST_POWERON: Serial.println(F("POWERON")); break;
-    case ESP_RST_EXT: Serial.println(F("EXT")); break;
-    case ESP_RST_SW: Serial.println(F("SW")); break;
-    case ESP_RST_PANIC: Serial.println(F("PANIC")); break;
-    case ESP_RST_INT_WDT: Serial.println(F("INT_WDT")); break;
-    case ESP_RST_TASK_WDT: Serial.println(F("TASK_WDT")); break;
-    case ESP_RST_WDT: Serial.println(F("WDT")); break;
-    case ESP_RST_DEEPSLEEP: Serial.println(F("DEEPSLEEP")); break;
-    case ESP_RST_BROWNOUT: Serial.println(F("BROWNOUT")); break;
-    case ESP_RST_SDIO: Serial.println(F("SDIO")); break;
-    default: Serial.println((int)rr); break;
+    case ESP_RST_POWERON: rrStr = "POWERON"; break;
+    case ESP_RST_EXT: rrStr = "EXT"; break;
+    case ESP_RST_SW: rrStr = "SW"; break;
+    case ESP_RST_PANIC: rrStr = "PANIC"; break;
+    case ESP_RST_INT_WDT: rrStr = "INT_WDT"; break;
+    case ESP_RST_TASK_WDT: rrStr = "TASK_WDT"; break;
+    case ESP_RST_WDT: rrStr = "WDT"; break;
+    case ESP_RST_DEEPSLEEP: rrStr = "DEEPSLEEP"; break;
+    case ESP_RST_BROWNOUT: rrStr = "BROWNOUT"; break;
+    case ESP_RST_SDIO: rrStr = "SDIO"; break;
+    default: rrStr = "UNKNOWN"; break;
   }
+  LOG_INFO("Boot: Reset reason %s (%d)", rrStr, (int)rr);
 #endif
 
   bool displayOk = false;
@@ -1125,7 +1125,7 @@ void setup() {
       if (displayOk) {
         g_panel.setBrightness(clampBrightness(TOUCH_BRIGHTNESS_MIN));
         g_lastBrightness = clampBrightness(TOUCH_BRIGHTNESS_MIN);
-        Serial.println(F("[Display] Wakeup complete"));
+        LOG_INFO("Display wakeup complete");
       }
     }
   }
@@ -1135,7 +1135,7 @@ void setup() {
   }
   if (!displayOk) {
     while (true) {
-      Serial.println(F("[Display] AMOLED init failed"));
+      LOG_ERROR("Display init failed");
       delay(1000);
     }
   }
@@ -1163,14 +1163,17 @@ void setup() {
         WiFi.setSleep(true);
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        Serial.print(F("[WiFi] Got IP: "));
-        Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+        {
+          IPAddress ip(info.got_ip.ip_info.ip.addr);
+          String ipStr = ip.toString();
+          LOG_INFO("WiFi got IP: %s", ipStr.c_str());
+        }
         g_wifiUi = WifiUiState::Online;
         // Raise TX power after association; disable modem sleep for responsiveness
         WiFi.setTxPower(WIFI_RUN_TXPOWER);
         WiFi.setSleep(false);
         // Wi-Fi up; print reminder of server endpoint
-        Serial.println(F("[HTTP] Server ready on port 80"));
+        LOG_INFO("HTTP server ready on port 80");
 #if FEATURE_TEST_ENDPOINT
         httpStartOnce();
 #endif
