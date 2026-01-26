@@ -22,6 +22,8 @@
 #include <SD_MMC.h>
 #include <display/drivers/common/Display.h>
 #include <display/drivers/common/ext.h>
+#define XPOWERS_CHIP_SY6970
+#include <XPowersLib.h>
 
 #include <TouchDrvInterface.hpp>
 
@@ -87,6 +89,10 @@ class Amoled_DisplayPanel : public Display {
     bool isPressed();
 
     uint16_t getBattVoltage(void);
+    bool hasPowerManagement();
+    bool isCharging();
+    bool isChargeDone();
+    bool isVbusPresent();
 
     void pushColors(uint16_t x, uint16_t y, uint16_t width, uint16_t hight, uint16_t *data);
 
@@ -109,6 +115,8 @@ class Amoled_DisplayPanel : public Display {
     uint8_t currentBrightness = 0;
     uint8_t sleepBrightnessLevel = 0;
     Amoled_Display_Panel_Color_Order colorOrder = ORDER_RGB;
+    XPowersPPM pmu;
+    bool pmuReady = false;
 
     Amoled_Display_Panel_Type panelType = DISPLAY_UNKNOWN;
     Amoled_Display_Panel_TouchType touchType = TOUCH_UNKNOWN;

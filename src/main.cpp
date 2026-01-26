@@ -114,8 +114,14 @@ static void fetchTask(void *arg);
 #ifndef TOUCH_BRIGHTNESS_MS
 #define TOUCH_BRIGHTNESS_MS 30000
 #endif
+#ifndef CLOSE_RADIUS_KM
+#define CLOSE_RADIUS_KM 4
+#endif
 #ifndef TOUCH_IDLE_SLEEP_MS
 #define TOUCH_IDLE_SLEEP_MS (15UL * 60UL * 1000UL)
+#endif
+#ifndef BATTERY_UI_UPDATE_MS
+#define BATTERY_UI_UPDATE_MS 5000
 #endif
 #ifndef SLEEP_BUTTON_PIN
 #define SLEEP_BUTTON_PIN 0
@@ -139,9 +145,9 @@ static int16_t g_centerY = 0;
 static int16_t g_safeRadius = 0;
 static bool g_displayReady = false;
 static uint32_t g_lastTouchMs = 0;
-static bool g_touchBoost = false;
 static uint8_t g_lastBrightness = 0;
 static uint32_t g_sleepHoldStartMs = 0;
+static uint32_t g_touchBoostUntilMs = 0;
 static portMUX_TYPE g_flightMux = portMUX_INITIALIZER_UNLOCKED;
 static FlightInfo g_pendingFlight;
 static bool g_pendingValid = false;
@@ -245,6 +251,8 @@ struct UiLvWidgets {
   lv_obj_t *title = nullptr;
   lv_obj_t *subtitle = nullptr;
   lv_obj_t *route = nullptr;
+  lv_obj_t *timeLbl = nullptr;
+  lv_obj_t *battLbl = nullptr;
   lv_obj_t *metricVal[3] = {nullptr, nullptr, nullptr};
   lv_obj_t *metricLbl[3] = {nullptr, nullptr, nullptr};
   lv_obj_t *ledBtn[3] = {nullptr, nullptr, nullptr};
@@ -356,30 +364,19 @@ static void uiInit() {
   lv_obj_clear_flag(g_lv.window, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_pos(g_lv.window, g_windowX, g_windowY);
 
-  static const char *kLedLabels[3] = {"PVT", "COM", "MIL"};
-  int16_t btnW = 44;
-  int16_t btnH = 26;
-  int16_t gap = 10;
-  int16_t totalW = (btnW * 3) + (gap * 2);
-  int16_t startX = g_centerX - totalW / 2;
-  int16_t ledY = g_centerY - g_safeRadius + 40;
-  for (int i = 0; i < 3; ++i) {
-    g_lv.ledBtn[i] = lv_obj_create(scr);
-    lv_obj_set_size(g_lv.ledBtn[i], btnW, btnH);
-    lv_obj_set_style_radius(g_lv.ledBtn[i], 6, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(g_lv.ledBtn[i], g_lvColors.ledOff, LV_PART_MAIN);
-    lv_obj_set_style_border_color(g_lv.ledBtn[i], g_lvColors.label, LV_PART_MAIN);
-    lv_obj_set_style_border_width(g_lv.ledBtn[i], 1, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_lv.ledBtn[i], 0, LV_PART_MAIN);
-    lv_obj_clear_flag(g_lv.ledBtn[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_lv.ledBtn[i], startX + i * (btnW + gap), ledY);
+  g_lv.timeLbl = lv_label_create(scr);
+  lv_label_set_text(g_lv.timeLbl, "");
+  lv_obj_set_style_text_color(g_lv.timeLbl, g_lvColors.muted, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.timeLbl, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_set_style_text_align(g_lv.timeLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_width(g_lv.timeLbl, 70);
 
-    g_lv.ledLbl[i] = lv_label_create(g_lv.ledBtn[i]);
-    lv_label_set_text(g_lv.ledLbl[i], kLedLabels[i]);
-    lv_obj_set_style_text_color(g_lv.ledLbl[i], lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_text_font(g_lv.ledLbl[i], &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_center(g_lv.ledLbl[i]);
-  }
+  g_lv.battLbl = lv_label_create(scr);
+  lv_label_set_text(g_lv.battLbl, "");
+  lv_obj_set_style_text_color(g_lv.battLbl, g_lvColors.muted, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.battLbl, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_set_style_text_align(g_lv.battLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_width(g_lv.battLbl, 70);
 
   g_lv.title = lv_label_create(g_lv.window);
   lv_label_set_long_mode(g_lv.title, LV_LABEL_LONG_WRAP);
@@ -433,6 +430,39 @@ static void uiInit() {
     lv_obj_align_to(g_lv.metricVal[i], g_lv.metricLbl[i], LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
   }
 
+  static const char *kLedLabels[3] = {"PVT", "COM", "MIL"};
+  int16_t btnW = 42;
+  int16_t btnH = 22;
+  {
+    int16_t gap = 6;
+    int16_t totalW = (btnW * 3) + (gap * 2);
+    int16_t startX = g_centerX - totalW / 2;
+    int16_t midY = lv_obj_get_y(g_lv.metricVal[1]) + lv_obj_get_height(g_lv.metricVal[1]) + 6 + (btnH / 2);
+    for (int i = 0; i < 3; ++i) {
+      g_lv.ledBtn[i] = lv_obj_create(scr);
+      lv_obj_set_size(g_lv.ledBtn[i], btnW, btnH);
+      lv_obj_set_style_radius(g_lv.ledBtn[i], 6, LV_PART_MAIN);
+      lv_obj_set_style_bg_color(g_lv.ledBtn[i], g_lvColors.ledOff, LV_PART_MAIN);
+      lv_obj_set_style_border_color(g_lv.ledBtn[i], g_lvColors.label, LV_PART_MAIN);
+      lv_obj_set_style_border_width(g_lv.ledBtn[i], 1, LV_PART_MAIN);
+      lv_obj_set_style_pad_all(g_lv.ledBtn[i], 0, LV_PART_MAIN);
+      lv_obj_clear_flag(g_lv.ledBtn[i], LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_pos(g_lv.ledBtn[i], startX + i * (btnW + gap), midY);
+
+      g_lv.ledLbl[i] = lv_label_create(g_lv.ledBtn[i]);
+      lv_label_set_text(g_lv.ledLbl[i], kLedLabels[i]);
+      lv_obj_set_style_text_color(g_lv.ledLbl[i], lv_color_hex(0x000000), LV_PART_MAIN);
+      lv_obj_set_style_text_font(g_lv.ledLbl[i], &lv_font_montserrat_14, LV_PART_MAIN);
+      lv_obj_center(g_lv.ledLbl[i]);
+    }
+  }
+
+  {
+    int16_t topY = g_centerY - g_safeRadius + 18;
+    lv_obj_set_pos(g_lv.timeLbl, g_centerX - 100, topY);
+    lv_obj_set_pos(g_lv.battLbl, g_centerX + 30, topY);
+  }
+
   g_lvReady = true;
 }
 
@@ -470,6 +500,28 @@ static void uiSetMetrics(const String &dist, const String &seats, const String &
 static void uiSetRoute(const String &route) {
   if (!g_lvReady || !g_lv.route) return;
   lv_label_set_text(g_lv.route, route.c_str());
+}
+
+static void uiSetBatteryMv(uint16_t mv, bool charging) {
+  if (!g_lvReady || !g_lv.battLbl) return;
+  if (mv == 0) {
+    lv_label_set_text(g_lv.battLbl, "--.-V");
+    lv_obj_set_style_text_color(g_lv.battLbl, g_lvColors.muted, LV_PART_MAIN);
+    return;
+  }
+  char buf[12];
+  uint16_t whole = mv / 1000;
+  uint16_t frac = (mv % 1000) / 10;
+  snprintf(buf, sizeof(buf), "%u.%02uV", whole, frac);
+  lv_label_set_text(g_lv.battLbl, buf);
+  lv_obj_set_style_text_color(g_lv.battLbl, charging ? g_lvColors.mil : g_lvColors.green, LV_PART_MAIN);
+}
+
+static void updateBatteryUi() {
+  if (!g_displayReady || !g_lvReady) return;
+  uint16_t mv = g_panel.getBattVoltage();
+  bool charging = g_panel.isCharging();
+  uiSetBatteryMv(mv, charging);
 }
 
 static void renderSplash(const char *title, const char *subtitle) {
@@ -862,8 +914,7 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil) {
   String url = String(API_BASE);
   if (url.startsWith("http://")) url.replace("http://", "https://");
   if (!url.startsWith("http")) url = String("https://") + url;
-  url += "/v2/mil/";
-  url += hex;
+  url += "/v2/mil";
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -877,11 +928,48 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil) {
     http.end();
     return false;
   }
-  DynamicJsonDocument doc(512);
-  DeserializationError err = deserializeJson(doc, http.getStream());
+  Stream &stream = http.getStream();
+  String hexLower = hex;
+  hexLower.toLowerCase();
+  String hexUpper = hex;
+  hexUpper.toUpperCase();
+  String needleLower = String("\"hex\":\"") + hexLower + "\"";
+  String needleUpper = String("\"hex\":\"") + hexUpper + "\"";
+  const char *countNeedle = "\"hex\":\"";
+  const size_t countNeedleLen = strlen(countNeedle);
+  uint32_t hexCount = 0;
+  String tail;
+  char buf[160];
+  bool found = false;
+  while (http.connected() || stream.available()) {
+    int n = stream.readBytes(buf, sizeof(buf) - 1);
+    if (n <= 0) break;
+    buf[n] = '\0';
+    String chunk = tail + String(buf);
+    int scanStart = 0;
+    if ((int)tail.length() >= (int)(countNeedleLen - 1)) {
+      scanStart = (int)tail.length() - (int)(countNeedleLen - 1);
+    }
+    const char *chunkC = chunk.c_str();
+    int maxStart = (int)chunk.length() - (int)countNeedleLen;
+    for (int i = scanStart; i <= maxStart; ++i) {
+      if (memcmp(chunkC + i, countNeedle, countNeedleLen) == 0) {
+        ++hexCount;
+        i += (int)countNeedleLen - 1;
+      }
+    }
+    if (chunk.indexOf(needleLower) >= 0 || chunk.indexOf(needleUpper) >= 0) {
+      found = true;
+      break;
+    }
+    int keep = max(0, (int)max(needleLower.length(), needleUpper.length()) - 1);
+    if (chunk.length() > keep) tail = chunk.substring(chunk.length() - keep);
+    else tail = chunk;
+    yield();
+  }
+  LOG_INFO("Mil list entries: %lu", (unsigned long)hexCount);
   http.end();
-  if (err) return false;
-  outIsMil = doc["is_military"] | false;
+  outIsMil = found;
   return true;
 }
 
@@ -1205,13 +1293,14 @@ void loop() {
   static uint32_t lastLvgl = 0;
   static bool lastTouch = false;
   static uint32_t lastSeq = 0;
+  static uint32_t lastBattUi = 0;
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
   }
 
   uint32_t now = millis();
-  if (g_displayReady && TOUCH_BRIGHTNESS_MS > 0) {
+  if (g_displayReady) {
     bool touched = g_panel.isPressed();
     if (touched != lastTouch) {
       LOG_INFO("Touch %s", touched ? "ON" : "OFF");
@@ -1219,25 +1308,32 @@ void loop() {
     }
     if (touched) {
       g_lastTouchMs = now;
-      uint8_t maxB = clampBrightness(TOUCH_BRIGHTNESS_MAX);
-      if (!g_touchBoost || g_lastBrightness != maxB) {
-        g_panel.setBrightness(maxB);
-        g_lastBrightness = maxB;
+      if (TOUCH_BRIGHTNESS_MS > 0) {
+        g_touchBoostUntilMs = now + TOUCH_BRIGHTNESS_MS;
       }
-      g_touchBoost = true;
     }
-    if (g_touchBoost && (int32_t)(now - g_lastTouchMs) >= (int32_t)TOUCH_BRIGHTNESS_MS) {
-      uint8_t minB = clampBrightness(TOUCH_BRIGHTNESS_MIN);
-      if (g_lastBrightness != minB) {
-        g_panel.setBrightness(minB);
-        g_lastBrightness = minB;
-      }
-      g_touchBoost = false;
+    bool touchBoost = g_touchBoostUntilMs != 0 && (int32_t)(g_touchBoostUntilMs - now) > 0;
+    bool closeBoost = g_haveDisplayed && !isnan(g_lastShown.distanceKm) &&
+                      g_lastShown.distanceKm <= CLOSE_RADIUS_KM;
+    bool milBoost = g_haveDisplayed && g_lastShown.opClass == "MIL";
+    uint8_t target = clampBrightness((touchBoost || closeBoost || milBoost) ? TOUCH_BRIGHTNESS_MAX
+                                                                : TOUCH_BRIGHTNESS_MIN);
+    if (g_lastBrightness != target) {
+      g_panel.setBrightness(target);
+      g_lastBrightness = target;
+    }
+  }
+
+  if (g_displayReady && BATTERY_UI_UPDATE_MS > 0) {
+    if ((int32_t)(now - lastBattUi) >= (int32_t)BATTERY_UI_UPDATE_MS) {
+      lastBattUi = now;
+      updateBatteryUi();
     }
   }
 
   if (g_displayReady && TOUCH_IDLE_SLEEP_MS > 0) {
-    if ((int32_t)(now - g_lastTouchMs) >= (int32_t)TOUCH_IDLE_SLEEP_MS) {
+    bool charging = g_panel.hasPowerManagement() && g_panel.isCharging();
+    if (!charging && (int32_t)(now - g_lastTouchMs) >= (int32_t)TOUCH_IDLE_SLEEP_MS) {
       LOG_INFO("Idle timeout reached; entering deep sleep");
       g_panel.enableTouchWakeup();
       g_panel.sleep();

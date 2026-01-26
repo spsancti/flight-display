@@ -13,6 +13,7 @@ static void waitMs(uint32_t durationMs) {
 }
 
 static bool g_touchWireStarted = false;
+static bool g_pmuWireStarted = false;
 
 static void pinInputIfValid(int8_t pin) {
     if (pin >= 0) {
@@ -77,6 +78,20 @@ Amoled_DisplayPanel::~Amoled_DisplayPanel() {
 bool Amoled_DisplayPanel::begin(Amoled_Display_Panel_Color_Order order) {
     bool display_ok = true;
     colorOrder = order;
+
+    if (!pmuReady) {
+        if (!g_pmuWireStarted) {
+            Wire.begin(hwConfig.i2c_sda, hwConfig.i2c_scl);
+            g_pmuWireStarted = true;
+        }
+        pmuReady = pmu.init(Wire, hwConfig.i2c_sda, hwConfig.i2c_scl, SY6970_DEVICE_ADDRESS);
+        if (pmuReady) {
+            pmu.enableMeasure();
+            ESP_LOGI("Amoled_DisplayPanel", "SY6970 PMU initialized");
+        } else {
+            ESP_LOGW("Amoled_DisplayPanel", "SY6970 PMU not detected");
+        }
+    }
 
     if (!initTouch()) {
         // Touch is optional for rendering; keep the display usable if touch fails.
@@ -228,6 +243,19 @@ bool Amoled_DisplayPanel::wakeup() {
         digitalWrite(hwConfig.lcd_en, HIGH);
     }
 
+    pmuReady = false;
+    if (!g_pmuWireStarted) {
+        Wire.begin(hwConfig.i2c_sda, hwConfig.i2c_scl);
+        g_pmuWireStarted = true;
+    }
+    pmuReady = pmu.init(Wire, hwConfig.i2c_sda, hwConfig.i2c_scl, SY6970_DEVICE_ADDRESS);
+    if (pmuReady) {
+        pmu.enableMeasure();
+        ESP_LOGI("Amoled_DisplayPanel", "SY6970 PMU reinit on wakeup");
+    } else {
+        ESP_LOGW("Amoled_DisplayPanel", "SY6970 PMU not detected on wakeup");
+    }
+
     // Re-init touch on wake (tp_rst may not be wired).
     if (_touchDrv) {
         delete _touchDrv;
@@ -300,6 +328,9 @@ bool Amoled_DisplayPanel::isPressed() {
 }
 
 uint16_t Amoled_DisplayPanel::getBattVoltage(void) {
+    if (pmuReady) {
+        return pmu.getBattVoltage();
+    }
     if (hwConfig.battery_voltage_adc_data == -1) {
         return 0;
     }
@@ -315,6 +346,22 @@ uint16_t Amoled_DisplayPanel::getBattVoltage(void) {
     sum = sum / number_of_samples;
 
     return esp_adc_cal_raw_to_voltage(sum, &adc_chars) * 2;
+}
+
+bool Amoled_DisplayPanel::hasPowerManagement() {
+    return pmuReady;
+}
+
+bool Amoled_DisplayPanel::isCharging() {
+    return pmuReady && pmu.isCharging();
+}
+
+bool Amoled_DisplayPanel::isChargeDone() {
+    return pmuReady && pmu.isChargeDone();
+}
+
+bool Amoled_DisplayPanel::isVbusPresent() {
+    return pmuReady && pmu.isVbusIn();
 }
 
 void Amoled_DisplayPanel::pushColors(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t *data) {
