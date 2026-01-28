@@ -45,6 +45,7 @@ struct FlightInfo {
   String typeCode;  // aircraft type (t)
   String category;  // raw category code
   String displayName;  // optional override (e.g., hexdb)
+  String registeredOwner;  // HexDB RegisteredOwners fallback
   long altitudeFt = -1;
   double lat = NAN;
   double lon = NAN;
@@ -64,9 +65,11 @@ static bool milCacheLookup(const String &hex, bool &outIsMil);
 static void milCacheStore(const String &hex, bool isMil);
 static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
 static bool fetchMilForCandidates(struct MilCandidate *cands, size_t count);
-static bool hexDbCacheLookup(const String &hex, String &outName, String &outType);
-static void hexDbCacheStore(const String &hex, const String &name, const String &type);
-static bool fetchHexDbByHex(const String &hex, String &outName, String &outType);
+static bool hexDbCacheLookup(const String &hex, String &outName, String &outType, String &outOwner);
+static void hexDbCacheStore(const String &hex, const String &name, const String &type,
+                            const String &owner);
+static bool fetchHexDbByHex(const String &hex, String &outName, String &outType,
+                            String &outOwner);
 static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute);
 static void fetchTask(void *arg);
 
@@ -171,6 +174,12 @@ static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;     // HTTP read timeout
 #ifndef HEXDB_CACHE_SIZE
 #define HEXDB_CACHE_SIZE 12
 #endif
+#ifndef HEXDB_FETCH_MIN_INTERVAL_MS
+#define HEXDB_FETCH_MIN_INTERVAL_MS 15000
+#endif
+#ifndef HEXDB_MIN_HEAP
+#define HEXDB_MIN_HEAP 50000
+#endif
 // Wi-Fi reconnect state
 static bool wifiInitialized = false;
 static bool wifiEverBegun = false;
@@ -198,9 +207,11 @@ struct HexDbCacheEntry {
   String hex;
   String name;
   String icaoType;
+  String owner;
   uint32_t ts;
 };
 static HexDbCacheEntry g_hexdbCache[HEXDB_CACHE_SIZE];
+static uint32_t g_hexdbLastFetchMs = 0;
 
 struct RouteCacheEntry {
   String callsign;
@@ -703,6 +714,7 @@ static bool parseAircraft(JsonObject obj, FlightInfo &res) {
   res.hasCallsign = hasCallsign;
   res.route = String("");
   res.displayName = String("");
+  res.registeredOwner = String("");
   return true;
 }
 
@@ -910,20 +922,21 @@ static bool fetchNearestFlight(FlightInfo &out) {
 
   if (FEATURE_HEXDB_LOOKUP && closest.hex.length()) {
     bool typeKnown = closest.typeCode.length() && aircraftFriendlyName(closest.typeCode).length();
-    if (!typeKnown) {
+    bool needOwner = !closest.route.length();
+    if (!typeKnown || needOwner) {
       String name;
       String icaoType;
-      if (hexDbCacheLookup(closest.hex, name, icaoType)) {
+      String owner;
+      if (hexDbCacheLookup(closest.hex, name, icaoType, owner)) {
         LOG_INFO("HexDB cache hit for %s", closest.hex.c_str());
-      } else if (fetchHexDbByHex(closest.hex, name, icaoType)) {
-        hexDbCacheStore(closest.hex, name, icaoType);
+      } else if (fetchHexDbByHex(closest.hex, name, icaoType, owner)) {
+        hexDbCacheStore(closest.hex, name, icaoType, owner);
       }
-      if (icaoType.length() && !aircraftFriendlyName(icaoType).length()) {
-        closest.typeCode = icaoType;
-      } else if (icaoType.length()) {
+      if (!typeKnown && icaoType.length()) {
         closest.typeCode = icaoType;
       }
       if (name.length()) closest.displayName = name;
+      if (owner.length()) closest.registeredOwner = owner;
     }
   }
 
@@ -1161,13 +1174,15 @@ static bool fetchMilForCandidates(MilCandidate *cands, size_t count) {
   return true;
 }
 
-static bool hexDbCacheLookup(const String &hex, String &outName, String &outType) {
+static bool hexDbCacheLookup(const String &hex, String &outName, String &outType,
+                             String &outOwner) {
   uint32_t now = millis();
   for (size_t i = 0; i < HEXDB_CACHE_SIZE; ++i) {
     if (g_hexdbCache[i].hex == hex) {
       if (now - g_hexdbCache[i].ts < HEXDB_CACHE_TTL_MS) {
         outName = g_hexdbCache[i].name;
         outType = g_hexdbCache[i].icaoType;
+        outOwner = g_hexdbCache[i].owner;
         return true;
       }
       return false;
@@ -1176,7 +1191,8 @@ static bool hexDbCacheLookup(const String &hex, String &outName, String &outType
   return false;
 }
 
-static void hexDbCacheStore(const String &hex, const String &name, const String &type) {
+static void hexDbCacheStore(const String &hex, const String &name, const String &type,
+                            const String &owner) {
   size_t slot = 0;
   uint32_t oldest = UINT32_MAX;
   for (size_t i = 0; i < HEXDB_CACHE_SIZE; ++i) {
@@ -1192,12 +1208,26 @@ static void hexDbCacheStore(const String &hex, const String &name, const String 
   g_hexdbCache[slot].hex = hex;
   g_hexdbCache[slot].name = name;
   g_hexdbCache[slot].icaoType = type;
+  g_hexdbCache[slot].owner = owner;
   g_hexdbCache[slot].ts = millis();
 }
 
-static bool fetchHexDbByHex(const String &hex, String &outName, String &outType) {
+static bool fetchHexDbByHex(const String &hex, String &outName, String &outType,
+                            String &outOwner) {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (!hex.length()) return false;
+#if defined(ESP32)
+  uint32_t heap = ESP.getFreeHeap();
+  if (heap < HEXDB_MIN_HEAP) {
+    LOG_WARN("HexDB skip: low heap (%u)", (unsigned)heap);
+    return false;
+  }
+#endif
+  uint32_t now = millis();
+  if ((int32_t)(now - g_hexdbLastFetchMs) < (int32_t)HEXDB_FETCH_MIN_INTERVAL_MS) {
+    return false;
+  }
+  g_hexdbLastFetchMs = now;
 
   String url = String("https://hexdb.io/api/v1/aircraft/");
   url += hex;
@@ -1223,9 +1253,11 @@ static bool fetchHexDbByHex(const String &hex, String &outName, String &outType)
   String manufacturer = doc["Manufacturer"] | "";
   String type = doc["Type"] | "";
   String icaoType = doc["ICAOTypeCode"] | "";
+  String owner = doc["RegisteredOwners"] | "";
   manufacturer.trim();
   type.trim();
   icaoType.trim();
+  owner.trim();
 
   String name;
   if (manufacturer.length() && type.length()) name = manufacturer + String(" ") + type;
@@ -1234,7 +1266,8 @@ static bool fetchHexDbByHex(const String &hex, String &outName, String &outType)
 
   outName = name;
   outType = icaoType;
-  return (outName.length() || outType.length());
+  outOwner = owner;
+  return (outName.length() || outType.length() || outOwner.length());
 }
 
 static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute) {
@@ -1424,7 +1457,12 @@ static void renderFlight(const FlightInfo &fi) {
 
   String callsign = fi.ident.length() ? fi.ident : String("-");
   uiSetTitle(friendly, callsign);
-  uiSetRoute(fi.route.length() ? fi.route : String("-"));
+  String routeLine = fi.route;
+  if (!routeLine.length() && fi.registeredOwner.length()) {
+    routeLine = fi.registeredOwner;
+  }
+  if (!routeLine.length()) routeLine = String("-");
+  uiSetRoute(routeLine);
 
   // Metrics around the ring
   String distStr = String("-");
