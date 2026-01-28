@@ -44,6 +44,7 @@ struct FlightInfo {
   String ident;     // flight/callsign or registration/hex fallback
   String typeCode;  // aircraft type (t)
   String category;  // raw category code
+  String displayName;  // optional override (e.g., hexdb)
   long altitudeFt = -1;
   double lat = NAN;
   double lon = NAN;
@@ -62,6 +63,10 @@ static void renderNoData(const char *detail);
 static bool milCacheLookup(const String &hex, bool &outIsMil);
 static void milCacheStore(const String &hex, bool isMil);
 static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil);
+static bool fetchMilForCandidates(struct MilCandidate *cands, size_t count);
+static bool hexDbCacheLookup(const String &hex, String &outName, String &outType);
+static void hexDbCacheStore(const String &hex, const String &name, const String &type);
+static bool fetchHexDbByHex(const String &hex, String &outName, String &outType);
 static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute);
 static void fetchTask(void *arg);
 
@@ -156,6 +161,16 @@ static uint32_t g_pendingSeq = 0;
 static const uint32_t FETCH_INTERVAL_MS = 3000;        // 30s between API calls
 static const uint32_t HTTP_CONNECT_TIMEOUT_MS = 15000;  // HTTP connect timeout
 static const uint32_t HTTP_READ_TIMEOUT_MS = 30000;     // HTTP read timeout
+// HexDB lookup
+#ifndef FEATURE_HEXDB_LOOKUP
+#define FEATURE_HEXDB_LOOKUP 1
+#endif
+#ifndef HEXDB_CACHE_TTL_MS
+#define HEXDB_CACHE_TTL_MS (24UL * 60UL * 60UL * 1000UL)
+#endif
+#ifndef HEXDB_CACHE_SIZE
+#define HEXDB_CACHE_SIZE 12
+#endif
 // Wi-Fi reconnect state
 static bool wifiInitialized = false;
 static bool wifiEverBegun = false;
@@ -168,6 +183,24 @@ struct MilCacheEntry {
 };
 static const size_t MIL_CACHE_SIZE = 16;
 static MilCacheEntry g_milCache[MIL_CACHE_SIZE];
+
+struct MilCandidate {
+  FlightInfo fi;
+  bool inFlight = false;
+  bool isMil = false;
+};
+static const size_t MIL_CANDIDATE_MAX = 48;
+static MilCandidate g_milCands[MIL_CANDIDATE_MAX];
+static String g_milNeedleLower[MIL_CANDIDATE_MAX];
+static String g_milNeedleUpper[MIL_CANDIDATE_MAX];
+
+struct HexDbCacheEntry {
+  String hex;
+  String name;
+  String icaoType;
+  uint32_t ts;
+};
+static HexDbCacheEntry g_hexdbCache[HEXDB_CACHE_SIZE];
 
 struct RouteCacheEntry {
   String callsign;
@@ -389,7 +422,7 @@ static void uiInit() {
   g_lv.subtitle = lv_label_create(g_lv.window);
   lv_label_set_long_mode(g_lv.subtitle, LV_LABEL_LONG_CLIP);
   lv_obj_set_width(g_lv.subtitle, g_windowW - 16);
-  lv_obj_set_style_text_color(g_lv.subtitle, g_lvColors.greenDim, LV_PART_MAIN);
+  lv_obj_set_style_text_color(g_lv.subtitle, g_lvColors.green, LV_PART_MAIN);
   lv_obj_set_style_text_font(g_lv.subtitle, &lv_font_montserrat_24, LV_PART_MAIN);
   lv_obj_set_style_text_align(g_lv.subtitle, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_align(g_lv.subtitle, LV_ALIGN_TOP_MID, 0, 8);
@@ -397,8 +430,8 @@ static void uiInit() {
   g_lv.route = lv_label_create(g_lv.window);
   lv_label_set_long_mode(g_lv.route, LV_LABEL_LONG_CLIP);
   lv_obj_set_width(g_lv.route, g_windowW - 16);
-  lv_obj_set_style_text_color(g_lv.route, g_lvColors.greenDim, LV_PART_MAIN);
-  lv_obj_set_style_text_font(g_lv.route, &lv_font_montserrat_20, LV_PART_MAIN);
+  lv_obj_set_style_text_color(g_lv.route, g_lvColors.green, LV_PART_MAIN);
+  lv_obj_set_style_text_font(g_lv.route, &lv_font_montserrat_24, LV_PART_MAIN);
   lv_obj_set_style_text_align(g_lv.route, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_align(g_lv.route, LV_ALIGN_BOTTOM_MID, 0, -8);
   lv_label_set_text(g_lv.route, "TLV-RMO");
@@ -669,6 +702,7 @@ static bool parseAircraft(JsonObject obj, FlightInfo &res) {
   res.hex = obj["hex"].isNull() ? String("") : String(obj["hex"].as<const char *>());
   res.hasCallsign = hasCallsign;
   res.route = String("");
+  res.displayName = String("");
   return true;
 }
 
@@ -705,11 +739,11 @@ static bool fetchNearestFlight(FlightInfo &out) {
       if (base.startsWith("https://")) base.replace("https://", "http://");
       if (!base.startsWith("http")) base = String("http://") + base;
     }
-    base += "/v2/point/";
+    base += "/v2/lat/";
     base += String(HOME_LAT, 6);
-    base += "/";
+    base += "/lon/";
     base += String(HOME_LON, 6);
-    base += "/";
+    base += "/dist/";
     base += String(radiusNmFromKm(SEARCH_RADIUS_KM));
     return base;
   };
@@ -784,8 +818,27 @@ static bool fetchNearestFlight(FlightInfo &out) {
 
   FlightInfo bestAir;
   FlightInfo bestGround;
+  FlightInfo bestMilAir;
+  FlightInfo bestMilGround;
   bool hasAir = false;
   bool hasGround = false;
+  bool hasMilAir = false;
+  bool hasMilGround = false;
+  size_t milCount = 0;
+  bool milTruncated = false;
+  auto considerMil = [&](const FlightInfo &fi, bool inFlight) {
+    if (inFlight) {
+      if (!hasMilAir || fi.distanceKm < bestMilAir.distanceKm) {
+        bestMilAir = fi;
+        hasMilAir = true;
+      }
+    } else {
+      if (!hasMilGround || fi.distanceKm < bestMilGround.distanceKm) {
+        bestMilGround = fi;
+        hasMilGround = true;
+      }
+    }
+  };
   for (JsonVariant v : ac) {
     if (!v.is<JsonObject>()) continue;
     FlightInfo fi;
@@ -802,6 +855,38 @@ static bool fetchNearestFlight(FlightInfo &out) {
         hasGround = true;
       }
     }
+    if (fi.hex.length()) {
+      if (milCount < MIL_CANDIDATE_MAX) {
+        g_milCands[milCount].fi = fi;
+        g_milCands[milCount].inFlight = inFlight;
+        g_milCands[milCount].isMil = false;
+        ++milCount;
+      } else {
+        milTruncated = true;
+      }
+    }
+  }
+  if (milTruncated) {
+    LOG_WARN("MIL candidate list truncated at %u", (unsigned)MIL_CANDIDATE_MAX);
+  }
+
+  if (FEATURE_MIL_LOOKUP && milCount > 0) {
+    for (size_t i = 0; i < milCount; ++i) {
+      bool isMil = false;
+      if (milCacheLookup(g_milCands[i].fi.hex, isMil) && isMil) {
+        g_milCands[i].isMil = true;
+        considerMil(g_milCands[i].fi, g_milCands[i].inFlight);
+      }
+    }
+    if (!hasMilAir && !hasMilGround) {
+      if (fetchMilForCandidates(g_milCands, milCount)) {
+        for (size_t i = 0; i < milCount; ++i) {
+          if (g_milCands[i].isMil) {
+            considerMil(g_milCands[i].fi, g_milCands[i].inFlight);
+          }
+        }
+      }
+    }
   }
 
   if (!hasAir && !hasGround) {
@@ -809,11 +894,37 @@ static bool fetchNearestFlight(FlightInfo &out) {
     return false;
   }
 
-  FlightInfo closest = hasAir ? bestAir : bestGround;
-  if (hasAir) {
-    LOG_INFO("Closest airborne %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+  FlightInfo closest;
+  if (hasMilAir) {
+    closest = bestMilAir;
+    LOG_INFO("Selected military airborne %s  dist %.2f km", closest.ident.c_str(),
+             closest.distanceKm);
   } else {
-    LOG_INFO("Closest grounded %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+    closest = hasAir ? bestAir : bestGround;
+    if (hasAir) {
+      LOG_INFO("Closest airborne %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+    } else {
+      LOG_INFO("Closest grounded %s  dist %.2f km", closest.ident.c_str(), closest.distanceKm);
+    }
+  }
+
+  if (FEATURE_HEXDB_LOOKUP && closest.hex.length()) {
+    bool typeKnown = closest.typeCode.length() && aircraftFriendlyName(closest.typeCode).length();
+    if (!typeKnown) {
+      String name;
+      String icaoType;
+      if (hexDbCacheLookup(closest.hex, name, icaoType)) {
+        LOG_INFO("HexDB cache hit for %s", closest.hex.c_str());
+      } else if (fetchHexDbByHex(closest.hex, name, icaoType)) {
+        hexDbCacheStore(closest.hex, name, icaoType);
+      }
+      if (icaoType.length() && !aircraftFriendlyName(icaoType).length()) {
+        closest.typeCode = icaoType;
+      } else if (icaoType.length()) {
+        closest.typeCode = icaoType;
+      }
+      if (name.length()) closest.displayName = name;
+    }
   }
 
   // Classify operation (MIL/COM/PVT)
@@ -973,6 +1084,159 @@ static bool fetchIsMilitaryByHex(const String &hex, bool &outIsMil) {
   return true;
 }
 
+static bool fetchMilForCandidates(MilCandidate *cands, size_t count) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (count == 0) return false;
+
+  String url = String(API_BASE);
+  if (url.startsWith("http://")) url.replace("http://", "https://");
+  if (!url.startsWith("http")) url = String("https://") + url;
+  url += "/v2/mil";
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10);
+  HTTPClient http;
+  http.setConnectTimeout(8000);
+  http.setTimeout(10000);
+  if (!http.begin(client, url)) return false;
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  size_t maxNeedleLen = 0;
+  for (size_t i = 0; i < count; ++i) {
+    String lower = cands[i].fi.hex;
+    lower.toLowerCase();
+    String upper = cands[i].fi.hex;
+    upper.toUpperCase();
+    g_milNeedleLower[i] = String("\"hex\":\"") + lower + "\"";
+    g_milNeedleUpper[i] = String("\"hex\":\"") + upper + "\"";
+    if (g_milNeedleLower[i].length() > maxNeedleLen) maxNeedleLen = g_milNeedleLower[i].length();
+    if (g_milNeedleUpper[i].length() > maxNeedleLen) maxNeedleLen = g_milNeedleUpper[i].length();
+  }
+
+  Stream &stream = http.getStream();
+  const char *countNeedle = "\"hex\":\"";
+  const size_t countNeedleLen = strlen(countNeedle);
+  uint32_t hexCount = 0;
+  String tail;
+  char buf[160];
+  while (http.connected() || stream.available()) {
+    int n = stream.readBytes(buf, sizeof(buf) - 1);
+    if (n <= 0) break;
+    buf[n] = '\0';
+    String chunk = tail + String(buf);
+    int scanStart = 0;
+    if ((int)tail.length() >= (int)(countNeedleLen - 1)) {
+      scanStart = (int)tail.length() - (int)(countNeedleLen - 1);
+    }
+    const char *chunkC = chunk.c_str();
+    int maxStart = (int)chunk.length() - (int)countNeedleLen;
+    for (int i = scanStart; i <= maxStart; ++i) {
+      if (memcmp(chunkC + i, countNeedle, countNeedleLen) == 0) {
+        ++hexCount;
+        i += (int)countNeedleLen - 1;
+      }
+    }
+    for (size_t i = 0; i < count; ++i) {
+      if (cands[i].isMil) continue;
+      if (chunk.indexOf(g_milNeedleLower[i]) >= 0 || chunk.indexOf(g_milNeedleUpper[i]) >= 0) {
+        cands[i].isMil = true;
+      }
+    }
+    int keep = max(0, (int)maxNeedleLen - 1);
+    if (chunk.length() > keep) tail = chunk.substring(chunk.length() - keep);
+    else tail = chunk;
+    yield();
+  }
+  LOG_INFO("Mil list entries: %lu", (unsigned long)hexCount);
+  http.end();
+
+  for (size_t i = 0; i < count; ++i) {
+    milCacheStore(cands[i].fi.hex, cands[i].isMil);
+  }
+  return true;
+}
+
+static bool hexDbCacheLookup(const String &hex, String &outName, String &outType) {
+  uint32_t now = millis();
+  for (size_t i = 0; i < HEXDB_CACHE_SIZE; ++i) {
+    if (g_hexdbCache[i].hex == hex) {
+      if (now - g_hexdbCache[i].ts < HEXDB_CACHE_TTL_MS) {
+        outName = g_hexdbCache[i].name;
+        outType = g_hexdbCache[i].icaoType;
+        return true;
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+static void hexDbCacheStore(const String &hex, const String &name, const String &type) {
+  size_t slot = 0;
+  uint32_t oldest = UINT32_MAX;
+  for (size_t i = 0; i < HEXDB_CACHE_SIZE; ++i) {
+    if (g_hexdbCache[i].hex.length() == 0) {
+      slot = i;
+      break;
+    }
+    if (g_hexdbCache[i].ts < oldest) {
+      oldest = g_hexdbCache[i].ts;
+      slot = i;
+    }
+  }
+  g_hexdbCache[slot].hex = hex;
+  g_hexdbCache[slot].name = name;
+  g_hexdbCache[slot].icaoType = type;
+  g_hexdbCache[slot].ts = millis();
+}
+
+static bool fetchHexDbByHex(const String &hex, String &outName, String &outType) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!hex.length()) return false;
+
+  String url = String("https://hexdb.io/api/v1/aircraft/");
+  url += hex;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10);
+  HTTPClient http;
+  http.setConnectTimeout(8000);
+  http.setTimeout(10000);
+  if (!http.begin(client, url)) return false;
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  DynamicJsonDocument doc(512);
+  DeserializationError err = deserializeJson(doc, http.getStream());
+  http.end();
+  if (err) return false;
+
+  String manufacturer = doc["Manufacturer"] | "";
+  String type = doc["Type"] | "";
+  String icaoType = doc["ICAOTypeCode"] | "";
+  manufacturer.trim();
+  type.trim();
+  icaoType.trim();
+
+  String name;
+  if (manufacturer.length() && type.length()) name = manufacturer + String(" ") + type;
+  else if (type.length()) name = type;
+  else if (manufacturer.length()) name = manufacturer;
+
+  outName = name;
+  outType = icaoType;
+  return (outName.length() || outType.length());
+}
+
 static bool fetchRouteByCallsign(const String &callsign, double lat, double lon, String &outRoute) {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (!callsign.length()) return false;
@@ -1040,6 +1304,9 @@ static bool fetchRouteByCallsign(const String &callsign, double lat, double lon,
 
   route.trim();
   if (!route.length()) return false;
+  String routeLower = route;
+  routeLower.toLowerCase();
+  if (routeLower == "unknown") return false;
   LOG_INFO("Route lookup result: %s", route.c_str());
   outRoute = route;
   return true;
@@ -1150,6 +1417,7 @@ static void renderFlight(const FlightInfo &fi) {
       isPseudo = true;
     }
   }
+  if (!friendly.length() && fi.displayName.length()) friendly = fi.displayName;
   if (!friendly.length()) friendly = String("Unknown Aircraft");
 
   uiSetOpClass(fi.opClass.c_str());

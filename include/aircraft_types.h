@@ -172,6 +172,7 @@ static const AircraftTypeInfo kTypeInfo[] = {
   { "AEST", "", "Piper", "Aerostar", 6 },
   { "AR11", "", "Aeronca", "11 Chief", 2 },
   { "ASTR", "", "IAI", "Astra 1125", 9 },
+  { "HRON", "", "IAI", "Heron", 0 },
   { "AT3T", "", "Air Tractor", "AT-402", 1 },
   { "AT44", "", "ATR", "ATR 42-400", 50 },
   { "AT5T", "", "Air Tractor", "AT-503", 1 },
