@@ -1,0 +1,37 @@
+#pragma once
+
+#ifndef FEATURE_MIL_LOOKUP
+#define FEATURE_MIL_LOOKUP 1
+#endif
+
+#ifndef FEATURE_ROUTE_LOOKUP
+#define FEATURE_ROUTE_LOOKUP 1
+#endif
+
+#ifndef FEATURE_DIAGNOSTICS
+#define FEATURE_DIAGNOSTICS 0
+#endif
+
+#ifndef ROUTE_CACHE_TTL_MS
+#define ROUTE_CACHE_TTL_MS (6UL * 60UL * 60UL * 1000UL)
+#endif
+
+#ifndef POSITION_MAX_AGE_S
+#define POSITION_MAX_AGE_S 45
+#endif
+
+#ifndef FETCH_INTERVAL_MS
+#define FETCH_INTERVAL_MS 3000
+#endif
+
+#ifndef HTTP_CONNECT_TIMEOUT_MS
+#define HTTP_CONNECT_TIMEOUT_MS 15000
+#endif
+
+#ifndef HTTP_READ_TIMEOUT_MS
+#define HTTP_READ_TIMEOUT_MS 30000
+#endif
+
+#ifndef MIL_LIST_FETCH_MIN_INTERVAL_MS
+#define MIL_LIST_FETCH_MIN_INTERVAL_MS (2UL * 60UL * 1000UL)
+#endif

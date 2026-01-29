@@ -36,7 +36,7 @@ The relay/LED outputs have been removed. Status is shown directly on the display
 
 - **Arduino GFX** (CO5300 AMOLED)
 - **ArduinoJson** for JSON parsing
-- **WiFi**, **WiFiClientSecure**, **HTTPClient**, **WebServer** (ESP32 core)
+- **WiFi**, **WiFiClientSecure**, **HTTPClient** (ESP32 core)
 
 The AmoledDisplay driver files are taken from the gaggimate repository:
 - https://github.com/jniebuhr/gaggimate/tree/master/src/display/drivers/AmoledDisplay
@@ -121,14 +121,6 @@ https://api.adsb.lol/v2/closest/47.6000/-122.3300/32
 To detect military aircraft the device can query `/v2/mil` once per new hex and cache the result for several hours.
 - Toggle at compile time with `#define FEATURE_MIL_LOOKUP 0/1` (default: 1).
 - If disabled, MIL classification is inferred only from type/seat heuristics.
-
-### Local Test Endpoint
-
-The device exposes a simple test endpoint (when enabled) to push JSON and render without calling the API:
-
-- `PUT http://<device-ip>/test/closest`
-  - Body: either a minimal test schema `{ "t": "B738", "ident": "TEST123", "alt": 32000, "dist": 12.3 }` or the full `/v2/closest` schema.
-- Toggle at compile time with `#define FEATURE_TEST_ENDPOINT 0/1` (default: 1).
 
 Notes
 - JSON parsing is filtered and streamed to minimize RAM (~8 KB doc).
