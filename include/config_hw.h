@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <Arduino_GFX_Library.h>
+#include <config.h>
 
 #ifndef BOOT_POWER_SETTLE_MS
 #define BOOT_POWER_SETTLE_MS 1200
@@ -13,6 +14,10 @@
 
 #ifndef WIFI_RUN_TXPOWER
 #define WIFI_RUN_TXPOWER WIFI_POWER_15dBm
+#endif
+
+#ifndef WIFI_FAST_CONNECT
+#define WIFI_FAST_CONNECT 1
 #endif
 
 #ifndef AMOLED_PANEL_WAVESHARE

@@ -12,6 +12,10 @@
 #define FEATURE_DIAGNOSTICS 0
 #endif
 
+#ifndef FAST_FIRST_FETCH
+#define FAST_FIRST_FETCH 1
+#endif
+
 #ifndef ROUTE_CACHE_TTL_MS
 #define ROUTE_CACHE_TTL_MS (6UL * 60UL * 60UL * 1000UL)
 #endif

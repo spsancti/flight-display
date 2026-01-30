@@ -11,6 +11,10 @@
 
 static bool wifiInitialized = false;
 static bool wifiEverBegun = false;
+static uint32_t g_nextReconnectMs = 0;
+static uint8_t g_reconnectAttempt = 0;
+static volatile bool g_forceFetch = false;
+static volatile bool g_wifiConnecting = false;
 
 static portMUX_TYPE g_flightMux = portMUX_INITIALIZER_UNLOCKED;
 static FlightInfo g_pendingFlight;
@@ -24,28 +28,46 @@ static void waitMs(uint32_t durationMs) {
   }
 }
 
+static uint32_t backoffMs(uint8_t attempt, uint32_t base = 500, uint32_t cap = 8000) {
+  uint32_t exp = base << min<uint8_t>(attempt, 5);
+  uint32_t j = (exp >> 3) * (esp_random() & 0x7) / 7;
+  return min(cap, exp - (exp >> 4) + j);
+}
+
 static void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
   if (!wifiInitialized) return;
-  if (wifiEverBegun) return;
+  if (g_wifiConnecting) return;
+#if WIFI_FAST_CONNECT
+  WiFi.setTxPower(WIFI_RUN_TXPOWER);
+  WiFi.setSleep(false);
+#endif
   LOG_INFO("WiFi connecting to %s", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   wifiEverBegun = true;
+  g_wifiConnecting = true;
 }
 
 static void fetchTask(void *arg) {
   (void)arg;
   uint32_t lastFetch = 0;
+  bool firstFetch = true;
   for (;;) {
     uint32_t now = millis();
+    if (g_forceFetch) {
+      g_forceFetch = false;
+      lastFetch = 0;
+    }
     if ((int32_t)(now - lastFetch) >= (int32_t)FETCH_INTERVAL_MS || lastFetch == 0) {
       lastFetch = now;
       FlightInfo fi;
-      bool ok = networkClientFetchNearestFlight(fi);
+      bool allowEnrichment = !FAST_FIRST_FETCH || !firstFetch;
+      bool ok = networkClientFetchNearestFlight(fi, allowEnrichment);
       portENTER_CRITICAL(&g_flightMux);
       g_pendingValid = ok;
       if (ok) {
         g_pendingFlight = fi;
+        firstFetch = false;
       }
       g_pendingSeq++;
       portEXIT_CRITICAL(&g_flightMux);
@@ -61,6 +83,13 @@ void networkingInit() {
         LOG_WARN("WiFi disconnected. Reason: %d", info.wifi_sta_disconnected.reason);
         WiFi.setTxPower(WIFI_BOOT_TXPOWER);
         WiFi.setSleep(true);
+        g_nextReconnectMs = 0;
+        g_reconnectAttempt = min<uint8_t>(g_reconnectAttempt + 1, 10);
+        if (info.wifi_sta_disconnected.reason == 203) {
+          WiFi.setTxPower(WIFI_RUN_TXPOWER);
+          WiFi.setSleep(false);
+        }
+        g_wifiConnecting = false;
         break;
       case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         {
@@ -70,6 +99,9 @@ void networkingInit() {
         }
         WiFi.setTxPower(WIFI_RUN_TXPOWER);
         WiFi.setSleep(false);
+        g_reconnectAttempt = 0;
+        g_forceFetch = true;
+        g_wifiConnecting = false;
         break;
       default: break;
     }
@@ -78,12 +110,18 @@ void networkingInit() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
+#if WIFI_FAST_CONNECT
+  WiFi.setTxPower(WIFI_RUN_TXPOWER);
+  WiFi.setSleep(false);
+#else
   WiFi.setTxPower(WIFI_BOOT_TXPOWER);
   WiFi.setSleep(true);
+#endif
   wifiInitialized = true;
 
   waitMs(BOOT_POWER_SETTLE_MS);
   connectWiFi();
+  g_forceFetch = true;
 }
 
 void networkingStartFetchTask() {
@@ -91,9 +129,13 @@ void networkingStartFetchTask() {
 }
 
 void networkingEnsureConnected() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-  }
+  if (WiFi.status() == WL_CONNECTED) return;
+  if (g_wifiConnecting) return;
+  uint32_t now = millis();
+  if ((int32_t)(now - g_nextReconnectMs) < 0) return;
+  uint32_t delayMs = backoffMs(g_reconnectAttempt);
+  g_nextReconnectMs = now + delayMs;
+  connectWiFi();
 }
 
 bool networkingGetLatest(FlightInfo &out, bool &outValid, uint32_t &outSeq) {

@@ -41,7 +41,7 @@ static size_t g_milFetchMap[kMilCandidateMax];
 static bool g_milFetchIsMil[kMilCandidateMax];
 }  // namespace
 
-bool networkClientFetchNearestFlight(FlightInfo &out) {
+bool networkClientFetchNearestFlight(FlightInfo &out, bool allowEnrichment) {
   if (WiFi.status() != WL_CONNECTED) return false;
 
   auto buildUrl = [](bool tls) {
@@ -172,7 +172,7 @@ bool networkClientFetchNearestFlight(FlightInfo &out) {
     LOG_WARN("MIL candidate list truncated at %u", (unsigned)kMilCandidateMax);
   }
 
-  if (FEATURE_MIL_LOOKUP && milCount > 0) {
+  if (allowEnrichment && FEATURE_MIL_LOOKUP && milCount > 0) {
     size_t fetchCount = 0;
 
     for (size_t i = 0; i < milCount; ++i) {
@@ -232,7 +232,7 @@ bool networkClientFetchNearestFlight(FlightInfo &out) {
     }
   }
 
-  if (FEATURE_HEXDB_LOOKUP && closest.hex.length()) {
+  if (allowEnrichment && FEATURE_HEXDB_LOOKUP && closest.hex.length()) {
     bool typeKnown = closest.typeCode.length() && aircraftFriendlyName(closest.typeCode).length();
     bool needOwner = !closest.route.length();
     if (!typeKnown || needOwner) {
@@ -252,14 +252,14 @@ bool networkClientFetchNearestFlight(FlightInfo &out) {
   closest.opClass = flightEnrichmentClassifyOp(closest);
   LOG_INFO("Classified op: %s", closest.opClass.c_str());
 
-  if (FEATURE_ROUTE_LOOKUP && closest.hasCallsign) {
+  if (allowEnrichment && FEATURE_ROUTE_LOOKUP && closest.hasCallsign) {
     String route;
     if (flightEnrichmentLookupRoute(closest.ident, closest.lat, closest.lon, route)) {
       closest.route = route;
     } else {
       LOG_WARN("Route lookup failed for %s", closest.ident.c_str());
     }
-  } else if (FEATURE_ROUTE_LOOKUP && !closest.hasCallsign) {
+  } else if (allowEnrichment && FEATURE_ROUTE_LOOKUP && !closest.hasCallsign) {
     LOG_INFO("Route lookup skipped: no callsign for %s", closest.ident.c_str());
   }
 
